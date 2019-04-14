@@ -1,0 +1,94 @@
+package mqtt
+
+import (
+	"fmt"
+	"log"
+	"math/rand"
+	"sync"
+	"time"
+
+	"../mod"
+	"../models"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
+
+	"github.com/jinzhu/gorm"
+)
+
+func MqttProcess(db *gorm.DB, webMqChan chan int, ModMqChan chan int, wg *sync.WaitGroup) {
+	var client mqtt.Client
+	_ = client
+	var err error
+	var Topics models.Topics
+	var wg2 sync.WaitGroup
+	var status int
+	for {
+		select {
+		case cmd := <-webMqChan:
+			if cmd == 1 {
+				client, err = MqConnect(db)
+				if err != nil {
+					fmt.Println("Error in Mqtt Start ", err)
+				} else {
+					fmt.Println("Mqtt Connected")
+					Topics, err = mod.GetAllTopics(db)
+					if err == nil {
+						if len(Topics) > 0 {
+							status = 1
+							wg2.Add(len(Topics))
+
+							fmt.Println("Modbus RW Started")
+						} else {
+							fmt.Println("There is no topics, Please add topics")
+						}
+					} else {
+						fmt.Println("Error in Fetching topics ", err)
+					}
+				}
+			}
+		}
+	}
+
+}
+
+func MqttOperation(topic models.Topics, payload chan []string) {
+	for {
+		select {
+		case pay := <-payload:
+			fmt.Println("Topic - ", topic.Topic, "Payload -  ", pay)
+		}
+	}
+}
+
+func MqConnect(db *gorm.DB) (mqtt.Client, error) {
+	var mqParams models.Mqtt
+	if err := db.Where("id = ?", 1).First(&mqParams).Error; err != nil {
+		return nil, err
+	} else {
+		clientid := fmt.Sprintf("TestClient_%d", rand.Intn(1000))
+		server := fmt.Sprintf("tcp://"+mqParams.Ip+":%d", mqParams.Port)
+		username := mqParams.Username
+		password := mqParams.Password
+		keepalive := 60
+		opts := CreateMqClientOptions(clientid, server, username, password, keepalive)
+		client := mqtt.NewClient(opts)
+		token := client.Connect()
+		for !token.WaitTimeout(3 * time.Second) {
+		}
+		if err := token.Error(); err != nil {
+			log.Fatal(err)
+		}
+		return client, err
+	}
+}
+
+func CreateMqClientOptions(clientid string, server string, username string, password string, keepalive int) *mqtt.ClientOptions {
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker(server)
+	opts.SetUsername(username)
+	opts.SetPassword(password)
+	opts.SetClientID(clientid)
+	opts.SetConnectTimeout(time.Duration(5))
+	opts.SetKeepAlive(time.Duration(keepalive))
+	return opts
+
+}
