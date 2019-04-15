@@ -40,15 +40,16 @@ func (j JSONString) MarshalJSON() ([]byte, error) {
 var WsClients = make(map[*websocket.Conn]bool)
 var mu, processMu sync.Mutex
 
-func ModMqProcessStart(db *gorm.DB, wsClientsChan chan map[*websocket.Conn]bool) (*modbus.RTUClientHandler, modbus.Client, mqtt.Client, *sync.WaitGroup, chan byte, error) {
+func MultiModMqProcessStart(db *gorm.DB, wsClientsChan chan map[*websocket.Conn]bool) ([]*modbus.RTUClientHandler, []modbus.Client, mqtt.Client, *sync.WaitGroup, chan byte, error, []error) {
 	// processMu.Lock()
 	// defer processMu.Unlock()
 	// var cmd int
 	// var status int
-	var handler *modbus.RTUClientHandler
-	var client modbus.Client
+	var handlers []*modbus.RTUClientHandler
+	var clients []modbus.Client
+	var retErrs []error
 	var mqClient mqtt.Client
-	_ = client
+	_ = clients
 	var err, mqErr error
 
 	var Topics []models.Topics
@@ -63,42 +64,46 @@ func ModMqProcessStart(db *gorm.DB, wsClientsChan chan map[*websocket.Conn]bool)
 	if mqErr != nil {
 		fmt.Println("Error in Mqtt Start ", mqErr)
 		go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Mqtt Start - %s", mqErr.Error(), time.Now()))
-		return handler, client, mqClient, &wg2, ModChance, mqErr
+		return handlers, clients, mqClient, &wg2, ModChance, mqErr, nil
 	} else {
 		go WsStatusPub(WsClients, fmt.Sprintf("%v	Mqtt Connected", time.Now()))
-		handler, err = ModStart(db)
-		if err != nil {
-			fmt.Println("Error in Modstart ", err)
-			go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Modstart - %s", time.Now(), err.Error()))
-			handler.Close()
-			return handler, client, mqClient, &wg2, ModChance, err
-		} else {
-			client = modbus.NewClient(handler)
-			fmt.Println("Modbus Connected")
-			go WsStatusPub(WsClients, fmt.Sprintf("%v	Modbus Connected", time.Now()))
-			Topics, err = GetAllTopics(db)
-			if err == nil {
-				if len(Topics) > 0 {
-					// status = 1
-					wg2.Add(len(Topics))
-					go ModReadWrite(mqClient, Topics, handler, client, ModChance, &wg2)
-					return handler, client, mqClient, &wg2, ModChance, err
-				} else {
-					fmt.Println("There is no topics, Please add topics")
-					go WsStatusPub(WsClients, fmt.Sprintf("%v	There is no topics, Please add topics", time.Now()))
-					return handler, client, mqClient, &wg2, ModChance, errors.New("here is no topics, Please add topic")
+		handlers, retErrs = MultiModStart(db)
+		for i, err := range retErrs {
+			if err != nil {
+				fmt.Println("Error in Modstart ", err)
+				go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Modstart - %s,  Serial Port - %s ", time.Now(), err.Error(), handlers[i].Address))
+				if i < cap(handlers) {
+					handlers[i].Close()
 				}
 
 			} else {
+				clients = append(clients, modbus.NewClient(handlers[i]))
+				fmt.Println("Modbus Connected ")
+				go WsStatusPub(WsClients, fmt.Sprintf("%v	Modbus Connected , Serial Port - %s", time.Now(), handlers[i].Address))
+			}
+
+		}
+		if cap(clients) > 0 {
+			Topics, err = GetAllTopics(db)
+			if err == nil {
+				if len(Topics) > 0 {
+
+					wg2.Add(len(Topics))
+					// go MultiModReadWrite(mqClient, Topics, handlers, clients, ModChance, &wg2)
+				} else {
+					fmt.Println("There is no topics, Please add topics")
+					go WsStatusPub(WsClients, fmt.Sprintf("%v	There is no topics, Please add topics", time.Now()))
+				}
+			} else {
 				fmt.Println("Error in Fetching topics ", err)
 				go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Fetching topics ", time.Now(), err.Error()))
-				return handler, client, mqClient, &wg2, ModChance, err
 			}
 		}
+		return handlers, clients, mqClient, &wg2, ModChance, mqErr, retErrs
 	}
 }
 
-func ModMqProcessStop(handler *modbus.RTUClientHandler, client modbus.Client, mqClient mqtt.Client, wg2 *sync.WaitGroup, ModChance chan byte) error {
+func MultiModMqProcessStop(handlers []*modbus.RTUClientHandler, mqClient mqtt.Client, wg2 *sync.WaitGroup, ModChance chan byte) error {
 	processMu.Lock()
 	defer processMu.Unlock()
 	go WsStatusPub(WsClients, fmt.Sprintf("%v	No of Gorotuines - %d", time.Now(), runtime.NumGoroutine()))
@@ -110,7 +115,10 @@ func ModMqProcessStop(handler *modbus.RTUClientHandler, client modbus.Client, mq
 	fmt.Println("Waiting for Wait groups")
 	wg2.Wait()
 	fmt.Println("Finsished for Wait groups")
-	handler.Close()
+	for _, handler := range handlers {
+		handler.Close()
+	}
+
 	mqClient.Disconnect(250)
 	fmt.Println("ModChance Started")
 	if len(ModChance) > 0 {
@@ -119,117 +127,6 @@ func ModMqProcessStop(handler *modbus.RTUClientHandler, client modbus.Client, mq
 
 	fmt.Println("Modbus Completed")
 	return nil
-}
-
-func ModMqProcess(db *gorm.DB, webModMqChan chan int, WsClientsChan chan map[*websocket.Conn]bool) {
-	// fmt.Println("no of gorutines2 - ", runtime.NumGoroutine())
-	var cmd int
-	var status int
-
-	var handler *modbus.RTUClientHandler
-	var client modbus.Client
-	var mqClient mqtt.Client
-	_ = client
-	var err, mqErr error
-
-	var Topics []models.Topics
-	_ = Topics
-	_ = status
-	status = 0
-	ModRWChan := make(chan bool, 1)
-	_ = ModRWChan
-	ModChance := make(chan byte, 1)
-	var wg2 sync.WaitGroup
-
-	for {
-		select {
-		case cmd = <-webModMqChan:
-			if cmd == 1 {
-
-				mqClient, mqErr = MqConnect(db)
-				if mqErr != nil {
-					fmt.Println("Error in Mqtt Start ", mqErr)
-					go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Mqtt Start - %s", err.Error(), time.Now()))
-
-				} else {
-					go WsStatusPub(WsClients, fmt.Sprintf("%v	Mqtt Connected", time.Now()))
-					handler, err = ModStart(db)
-					if err != nil {
-						fmt.Println("Error in Modstart ", err)
-						go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Modstart - %s", time.Now(), err.Error()))
-						handler.Close()
-					} else {
-						client = modbus.NewClient(handler)
-						fmt.Println("Modbus Connected")
-						go WsStatusPub(WsClients, fmt.Sprintf("%v	Modbus Connected", time.Now()))
-						Topics, err = GetAllTopics(db)
-						if err == nil {
-							if len(Topics) > 0 {
-								status = 1
-								wg2.Add(len(Topics))
-								go ModReadWrite(mqClient, Topics, handler, client, ModChance, &wg2)
-
-							} else {
-								fmt.Println("There is no topics, Please add topics")
-								go WsStatusPub(WsClients, fmt.Sprintf("%v	There is no topics, Please add topics", time.Now()))
-							}
-						} else {
-							fmt.Println("Error in Fetching topics ", err)
-							go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Fetching topics ", time.Now(), err.Error()))
-						}
-					}
-				}
-			} else if cmd == 2 {
-				go WsStatusPub(WsClients, fmt.Sprintf("%v	No of Gorotuines - %d", time.Now(), runtime.NumGoroutine()))
-				if handler != nil {
-					fmt.Println("Modbus closing")
-					// fmt.Println(len(ModChance))
-
-					if len(ModChance) == 0 {
-
-						ModChance <- 0
-						fmt.Println("Modbus closed")
-
-					}
-					// fmt.Println(runtime.Stack())
-					//
-					wg2.Wait()
-					handler.Close()
-					mqClient.Disconnect(250)
-					// if len(ModChance) > 0 {
-					// 	<-ModChance
-					// }
-					<-ModChance
-					// fmt.Println("no of gorutines4 - ", runtime.NumGoroutine())
-
-					status = 0
-				}
-			}
-			// case wsClients = <-wsClientsChan:
-
-			// default:
-			// 	// fmt.Println("Im in Modbus Pocess Default Case", time.Stamp)
-			// 	if status == 1 {
-
-			// 		if handler != nil {
-			// 			// fmt.Println("Modbus connected and commanded to fetch data")
-			// 			// handler.SlaveId = 1
-			// 			// results, err := client.ReadHoldingRegisters(3910, 6)
-			// 			// fmt.Println(results)
-			// 			// float, err := arrFloat32frombytes(results, 4)
-			// 			// fmt.Println(float, err)
-
-			// 			// time.Sleep(1 * time.Second)
-
-			// 		} else {
-			// 			status = 0
-			// 			fmt.Println("Modbus not connected but you commanded to fetch data")
-			// 		}
-			// 	}
-		}
-
-	}
-
 }
 
 func GetAllTopics(db *gorm.DB) ([]models.Topics, error) {
@@ -282,25 +179,27 @@ func WsStatusPub(clients map[*websocket.Conn]bool, msg string) {
 	}
 }
 
-func ModStart(db *gorm.DB) (*modbus.RTUClientHandler, error) {
-	var serialParams models.SerialDetails
-	if err := db.Where("id = ?", 1).First(&serialParams).Error; err != nil {
-		return nil, err
+func MultiModStart(db *gorm.DB) ([]*modbus.RTUClientHandler, []error) {
+	var serialParams []models.SerialDetails
+	var handlers []*modbus.RTUClientHandler
+	var retErrs []error
+	if err := db.Find(serialParams).Error; err != nil {
+		retErrs = append(retErrs, err)
+		return handlers, retErrs
 	} else {
-		// fmt.Println(serialParams)
-		fmt.Println(serialParams.ComPort, serialParams.BaudRate, serialParams.DataBits, serialParams.Parity, serialParams.StopBits, time.Duration(serialParams.Timeout)*time.Second)
-		handler := modbus.NewRTUClientHandler(serialParams.ComPort)
-		handler.BaudRate = serialParams.BaudRate
-		handler.DataBits = serialParams.DataBits
-		handler.Parity = serialParams.Parity
-		handler.StopBits = serialParams.StopBits
-		handler.Timeout = time.Duration(serialParams.Timeout) * time.Second
-		// handler.Logger = log.New(os.Stdout, "test: ", log.LstdFlags)
-		err := handler.Connect()
-		// if err != nil {
-		// 	fmt.Println(err)
-		// }
-		return handler, err
+		for _, serialParam := range serialParams {
+			handler := modbus.NewRTUClientHandler(serialParam.ComPort)
+			handler.BaudRate = serialParam.BaudRate
+			handler.DataBits = serialParam.DataBits
+			handler.Parity = serialParam.Parity
+			handler.StopBits = serialParam.StopBits
+			handler.Timeout = time.Duration(serialParam.Timeout) * time.Second
+			// handler.Logger = log.New(os.Stdout, "test: ", log.LstdFlags)
+			err := handler.Connect()
+			handlers = append(handlers, handler)
+			retErrs = append(retErrs, err)
+		}
+		return handlers, retErrs
 	}
 }
 
@@ -481,7 +380,7 @@ func ModOperation(topic models.Topics, handler *modbus.RTUClientHandler, client 
 						fmt.Println(topic.Topic, modreg.Name, modreg.Register, results, err)
 					}
 				}
-
+				// Concat payload and Send as Combined Payload here
 				if len(ModChance) == 0 {
 
 					ModChance <- 100
@@ -618,11 +517,13 @@ func ArrPostProcess(ppstring string, values ...interface{}) {
 		switch reflect.TypeOf(value).Kind() {
 		case reflect.Slice:
 			s := reflect.ValueOf(value)
-
+			_ = s
 		case reflect.Array:
 			s := reflect.ValueOf(value)
+			_ = s
 		default:
 			s := reflect.ValueOf(value)
+			_ = s
 		}
 
 	}

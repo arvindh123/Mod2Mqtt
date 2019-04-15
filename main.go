@@ -29,7 +29,7 @@ import (
 var db *gorm.DB
 var err error
 
-var clients = make(map[*websocket.Conn]bool) // connected clients
+var wsClients = make(map[*websocket.Conn]bool) // connected clients
 var wsClientsChan = make(chan map[*websocket.Conn]bool)
 
 var broadcast = make(chan rdmsg) // broadcast channel
@@ -49,6 +49,10 @@ type UserLogin struct {
 	Password string `gorm:"NOT NULL" json:"password"`
 }
 type Empty struct {
+}
+
+type AssoPortsStruct struct {
+	PortId []*int `json:"portids"`
 }
 
 type AssoRegsStruct struct {
@@ -96,34 +100,38 @@ type Topics struct {
 }
 
 type SerialDetails struct {
-	Id       int    `gorm:"UNIQUE;NOT NULL;PRIMARY_KEY" json:"id"`
-	ComPort  string `gorm:"UNIQUE;NOT NULL" json:"comport"`
-	BaudRate int    `gorm:"NOT NULL" json:"baudrate"`
-	DataBits int    `gorm:"NOT NULL" json:"databits"`
-	Parity   string `gorm:"NOT NULL;size:1" json:"parity"`
-	StopBits int    `gorm:"NOT NULL" json:"stopbits"`
-	Timeout  int    `gorm:"NOT NULL" json:"timeout"`
+	Id       int                `gorm:"UNIQUE;NOT NULL;PRIMARY_KEY" json:"id"`
+	ComPort  string             `gorm:"UNIQUE;NOT NULL" json:"comport"`
+	BaudRate int                `gorm:"NOT NULL" json:"baudrate"`
+	DataBits int                `gorm:"NOT NULL" json:"databits"`
+	Parity   string             `gorm:"NOT NULL;size:1" json:"parity"`
+	StopBits int                `gorm:"NOT NULL" json:"stopbits"`
+	Timeout  int                `gorm:"NOT NULL" json:"timeout"`
+	ModRegs  []*ModbusRegisters `gorm:"many2many:regs_ports;"  json:"modregs"`
 }
 
 type ModbusRegisters struct {
-	ID          int       `gorm:"UNIQUE;NOT NULL;PRIMARY_KEY;AUTO_INCREMENT" json:"id"`
-	Name        string    `gorm:"NOT NULL" json:"name"`
-	Unit        byte      `gorm:"NOT NULL" json:"unit"`
-	FunctCode   int       `gorm:"NOT NULL" json:"functcode"`
-	Register    uint16    `gorm:"NOT NULL" json:"register"`
-	Qty         uint16    `gorm:"NOT NULL" json:"qty"`
-	DataType    int       `gorm:"NOT NULL" json:"datatype"`
-	ByteOrder   uint8     `gorm:"NOT NULL" json:"byteorder"`
-	PostProcess string    `gorm:"NOT NULL" json:"postprocess"`
-	Tags        string    `gorm:"NOT NULL" json:"tags"`
-	MqTopic     []*Topics `gorm:"many2many:regs_topics;" json:"mqtopic"`
+	ID          int              `gorm:"UNIQUE;NOT NULL;PRIMARY_KEY;AUTO_INCREMENT" json:"id"`
+	Name        string           `gorm:"NOT NULL" json:"name"`
+	Unit        byte             `gorm:"NOT NULL" json:"unit"`
+	FunctCode   int              `gorm:"NOT NULL" json:"functcode"`
+	Register    uint16           `gorm:"NOT NULL" json:"register"`
+	Qty         uint16           `gorm:"NOT NULL" json:"qty"`
+	DataType    int              `gorm:"NOT NULL" json:"datatype"`
+	ByteOrder   uint8            `gorm:"NOT NULL" json:"byteorder"`
+	PostProcess string           `gorm:"NOT NULL" json:"postprocess"`
+	Tags        string           `gorm:"NOT NULL" json:"tags"`
+	MqTopic     []*Topics        `gorm:"many2many:regs_topics;" json:"mqtopic"`
+	SerialPorts []*SerialDetails `gorm:"many2many:regs_ports;" json:"serialport"`
 }
 
 func main() {
 	// NOTE: See we’re using = to assign the global var
 	// instead of := which would assign it only in this function
-	var handler *modbus.RTUClientHandler
-	var client modbus.Client
+	var handlers []*modbus.RTUClientHandler
+	var clients []modbus.Client
+	var retErrs []error
+	var mqErr error
 	var mqClient mqtt.Client
 	var wg2 sync.WaitGroup
 	var ModChance chan byte
@@ -175,9 +183,9 @@ func main() {
 
 	apiV1 := r.Group("/api/v1/")
 	{
-		apiV1.POST("/modbus/params", CreateModbusSerailParams)
-		// apiV1.PUT("/modbus/params", CreateModbusSerailParams)
+		apiV1.POST("/modbus/params/:id", CreateModbusSerailParams)
 		apiV1.GET("/modbus/params", GetModbusSerailParams)
+		apiV1.DELETE("/modbus/params/:id", DeleteModbusSerailParams)
 
 		apiV1.POST("/mqtt/params", CreateMqttParams)
 		// apiV1.PUT("/mqtt/params", CreateMqttParams)
@@ -197,9 +205,12 @@ func main() {
 
 		apiV1.POST("/modregs/topics/:id", AssoRegs2Topic)
 		apiV1.DELETE("/modregs/topics/:id", DelRegs2Topic)
+
+		apiV1.POST("/serial/modregs/:id", AssoPort2Regs)
+		apiV1.DELETE("/serial/modregs/:id", DelPort2Regs)
+		apiV1.DELETE("/serial/modregs/:id/all", DelPort2RegsAll)
 	}
-	go handleMessages(handler, client, mqClient, &wg2, ModChance, err)
-	// go handleMessages(webModMqChan)
+	go handleMessages(handlers, clients, mqClient, &wg2, ModChance, mqErr, retErrs)
 	r.Run(":5000")
 	// log.Println(http.ListenAndServe("localhost:6060", nil))
 
@@ -213,8 +224,8 @@ func wshandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Failed to upgrade ws: %+v", err)
 		return
 	}
-	clients[conn] = true
-	mod.WsClients = clients
+	wsClients[conn] = true
+	mod.WsClients = wsClients
 
 	for {
 		t, msg, err := conn.ReadMessage()
@@ -227,41 +238,7 @@ func wshandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-// func handleMessages(webModMqChan chan int) {
-// 	var dat map[string]interface{}
-// 	for {
-
-// 		msg := <-broadcast
-// 		fmt.Println("Msg type - ", msg.ty)
-// 		if err := json.Unmarshal(msg.msg, &dat); err != nil {
-// 			fmt.Println("Error in json Unmarshal", err)
-// 		} else {
-// 			for k, v := range dat {
-// 				if k == "" {
-// 					if v == "1" {
-// 						fmt.Println(v)
-// 						// webModMqChan <- 1
-// 					} else if v == "2" {
-// 						fmt.Println(v)
-// 						// webModMqChan <- 2
-// 					}
-// 				} else {
-// 					for client := range clients {
-// 						err := client.WriteMessage(msg.ty, msg.msg)
-// 						if err != nil {
-// 							log.Printf("error: %v", err)
-// 							client.Close()
-// 							delete(clients, client)
-// 						}
-// 					}
-// 				}
-// 			}
-// 		}
-
-// 	}
-// }
-
-func handleMessages(handler *modbus.RTUClientHandler, client modbus.Client, mqClient mqtt.Client, wg2 *sync.WaitGroup, ModChance chan byte, err error) {
+func handleMessages(handlers []*modbus.RTUClientHandler, clients []modbus.Client, mqClient mqtt.Client, wg2 *sync.WaitGroup, ModChance chan byte, mqErr error, retErrs []error) {
 	var dat map[string]interface{}
 	for {
 		msg := <-broadcast
@@ -274,21 +251,21 @@ func handleMessages(handler *modbus.RTUClientHandler, client modbus.Client, mqCl
 				if k == "Cmd" {
 					if v == "1" {
 
-						handler, client, mqClient, wg2, ModChance, err = mod.ModMqProcessStart(db, wsClientsChan)
-						if err != nil {
-							mod.ModMqProcessStop(handler, client, mqClient, wg2, ModChance)
+						handlers, clients, mqClient, wg2, ModChance, mqErr, retErrs = mod.MultiModMqProcessStart(db, wsClientsChan)
+						if err != nil && retErrs != nil {
+							mod.MultiModMqProcessStop(handlers, mqClient, wg2, ModChance)
 						}
 					} else if v == "2" {
 
-						err = mod.ModMqProcessStop(handler, client, mqClient, wg2, ModChance)
+						err = mod.MultiModMqProcessStop(handlers, mqClient, wg2, ModChance)
 					}
 				} else {
-					for client := range clients {
+					for client := range wsClients {
 						err := client.WriteMessage(msg.ty, msg.msg)
 						if err != nil {
 							log.Printf("error: %v", err)
 							client.Close()
-							delete(clients, client)
+							delete(wsClients, client)
 						}
 					}
 				}
@@ -484,34 +461,60 @@ func Logout(c *gin.Context) {
 }
 
 func CreateModbusSerailParams(c *gin.Context) {
+
+	id := c.Params.ByName("id")
+	// var modregs ModbusRegisters
 	var moddb SerialDetails
-	if err := db.Where("id = ?", 1).First(&moddb).Error; err != nil {
-		moddb.Id = 1
-		if err = c.ShouldBindJSON(&moddb); err != nil {
-			c.JSON(200, gin.H{"msg": []Content{Content{"Enter all details"}}})
+	if id == "0" {
+		if err := c.ShouldBindJSON(&moddb); err != nil {
+			c.JSON(200, gin.H{"msg": []Content{Content{"Invalid format or datatype"}}})
+			c.Abort()
 		} else {
-			db.Save(&moddb)
-			c.JSON(200, gin.H{"msg": []Content{Content{"Done"}}})
+
+			if err := db.Create(&moddb).Error; err != nil {
+				c.JSON(200, gin.H{"msg": []Content{Content{"Invalid format or datatype or Data already exist"}}})
+			} else {
+				c.JSON(200, gin.H{"msg": []Content{Content{"Done"}}})
+			}
 		}
 	} else {
-		if err = c.ShouldBindJSON(&moddb); err != nil {
-			c.JSON(200, gin.H{"msg": []Content{Content{"Enter all details"}}})
+		if err := db.Where("id = ?", id).First(&moddb).Error; err != nil {
+			c.JSON(200, gin.H{"msg": []Content{Content{"Id doesn't exist"}}})
 		} else {
-			db.Save(&moddb)
-			c.JSON(200, gin.H{"msg": []Content{Content{"Done"}}})
+			if err := c.ShouldBindJSON(&moddb); err != nil {
+				c.JSON(200, gin.H{"msg": []Content{Content{"Invalid format or datatype"}}})
+				c.Abort()
+			} else {
+				db.Save(&moddb)
+				c.JSON(200, gin.H{"msg": []Content{Content{"Done"}}})
+			}
 		}
 	}
 }
 
 func GetModbusSerailParams(c *gin.Context) {
-	var mod SerialDetails
-	// id := c.Params.ByName("id")
-	if err := db.Where("id = ?", 1).First(&mod).Error; err != nil {
+	var ports []SerialDetails
+	if err := db.Find(&ports).Error; err != nil {
 		c.JSON(200, gin.H{"msg": []Empty{Empty{}}})
 	} else {
-		c.JSON(200, gin.H{"msg": []SerialDetails{mod}})
+		for i, port := range ports {
+			var modregs []*ModbusRegisters
+			if err = db.Model(&port).Association("ModRegs").Find(&modregs).Error; err != nil {
+				// topics[i].ModRegs = modregs
+			} else {
+				ports[i].ModRegs = modregs
+			}
+		}
+		c.JSON(200, gin.H{"msg": ports})
 	}
+}
 
+func DeleteModbusSerailParams(c *gin.Context) {
+	id := c.Params.ByName("id")
+	var mod SerialDetails
+	d := db.Where("id = ?", id).Delete(&mod)
+	_ = d
+	c.JSON(200, gin.H{"msg": []Content{Content{"Done"}}})
 }
 
 func CreateModRegs(c *gin.Context) {
@@ -521,10 +524,8 @@ func CreateModRegs(c *gin.Context) {
 	if id == "0" {
 		if err := c.ShouldBindJSON(&modregs); err != nil {
 			c.JSON(200, gin.H{"msg": []Content{Content{"Invalid format or datatype"}}})
-			fmt.Println(modregs)
 			c.Abort()
 		} else {
-			fmt.Println(modregs)
 
 			if err := db.Create(&modregs).Error; err != nil {
 				c.JSON(200, gin.H{"msg": []Content{Content{"Invalid format or datatype"}}})
@@ -554,10 +555,16 @@ func GetModRegs(c *gin.Context) {
 	} else {
 		for i, modreg := range modregs {
 			var topics []*Topics
+			var ports []*SerialDetails
 			if err = db.Model(&modreg).Association("MqTopic").Find(&topics).Error; err != nil {
-				// modregs[i].MqTopic = topics
+
 			} else {
 				modregs[i].MqTopic = topics
+			}
+			if err = db.Model(&modreg).Association("SerialPorts").Find(&ports).Error; err != nil {
+
+			} else {
+				modregs[i].SerialPorts = ports
 			}
 		}
 		c.JSON(200, gin.H{"msg": modregs})
@@ -741,6 +748,86 @@ func DelTopic2Regs(c *gin.Context) {
 			} else {
 				if len(modregs) > 0 {
 					if res := db.Model(&topic).Association("ModRegs").Delete(modregs); res.Error != nil {
+						fmt.Println(err)
+					}
+					c.JSON(200, gin.H{"msg": []Content{Content{"Done"}}})
+					c.Abort()
+				} else {
+					c.JSON(200, gin.H{"msg": []Content{Content{"No Modbus Registers Found"}}})
+					c.Abort()
+				}
+			}
+		}
+	}
+}
+
+func AssoPort2Regs(c *gin.Context) {
+	var modregids AssoRegsStruct
+	id := c.Params.ByName("id")
+	if err = c.ShouldBindJSON(&modregids); err != nil {
+		c.JSON(200, gin.H{"msg": []Content{Content{"Invalid Data"}}})
+	} else {
+		var port SerialDetails
+		var modregs []ModbusRegisters
+		if err = db.Where("id = ?", id).First(&port).Error; err != nil {
+			fmt.Println("error...", err)
+			c.JSON(200, gin.H{"msg": []Content{Content{"Serial Port not found"}}})
+			c.Abort()
+		} else {
+			if err = db.Where("id in (?)", modregids.ModRegId).Find(&modregs).Error; err != nil {
+				c.JSON(200, gin.H{"msg": []Content{Content{"Error in getting Modbus Registers"}}})
+				c.Abort()
+			} else {
+				if len(modregs) > 0 {
+					if res := db.Model(&port).Association("ModRegs").Append(modregs); res.Error != nil {
+						fmt.Println(err)
+					}
+					c.JSON(200, gin.H{"msg": []Content{Content{"Done"}}})
+					c.Abort()
+				} else {
+					c.JSON(200, gin.H{"msg": []Content{Content{"No Modbus Registers Found"}}})
+					c.Abort()
+				}
+			}
+		}
+	}
+}
+
+func DelPort2RegsAll(c *gin.Context) {
+	id := c.Params.ByName("id")
+	var port SerialDetails
+	if err = db.Where("id = ?", id).First(&port).Error; err != nil {
+		fmt.Println("error...", err)
+		c.JSON(200, gin.H{"msg": []Content{Content{"Serial Port not found"}}})
+		c.Abort()
+	} else {
+		if res := db.Model(&port).Association("ModRegs").Clear(); res.Error != nil {
+			fmt.Println(err)
+		} else {
+			c.JSON(200, gin.H{"msg": []Content{Content{"Done"}}})
+			c.Abort()
+		}
+	}
+}
+func DelPort2Regs(c *gin.Context) {
+	var modregids AssoRegsStruct
+	id := c.Params.ByName("id")
+	if err = c.ShouldBindJSON(&modregids); err != nil {
+		c.JSON(200, gin.H{"msg": []Content{Content{"Invalid Data"}}})
+	} else {
+		var port SerialDetails
+		var modregs []ModbusRegisters
+		if err = db.Where("id = ?", id).First(&port).Error; err != nil {
+			fmt.Println("error...", err)
+			c.JSON(200, gin.H{"msg": []Content{Content{"Serial Port not found"}}})
+			c.Abort()
+		} else {
+			if err = db.Where("id in (?)", modregids.ModRegId).Find(&modregs).Error; err != nil {
+				c.JSON(200, gin.H{"msg": []Content{Content{"Error in getting Modbus Registers"}}})
+				c.Abort()
+			} else {
+				if len(modregs) > 0 {
+					if res := db.Model(&port).Association("ModRegs").Delete(modregs); res.Error != nil {
 						fmt.Println(err)
 					}
 					c.JSON(200, gin.H{"msg": []Content{Content{"Done"}}})

@@ -17,7 +17,9 @@ class AuthExample extends React.Component {
           <Route path="/home" component={Home} />
           <Route path="/login" component={NavLogIn} />
           <PrivateRoute path="/usermanager" component={UserManager} />
+          <PrivateRoute path="/serial" component={SerialPorts} />
           <PrivateRoute path="/modbus" component={Modbus} />
+          <PrivateRoute path="/smr" component={SMR} />
           <PrivateRoute path="/mqtt" component={Mqtt} />
           <PrivateRoute path="/trr" component={TRR} />
 
@@ -177,8 +179,14 @@ class NavLoggedIn extends React.Component {
           </div>
 
           <ul class="nav navbar-nav">
+          <li>
+              <Link to="/serial">Serial Port</Link>
+            </li>
             <li>
               <Link to="/modbus">Modbus</Link>
+            </li>
+            <li>
+              <Link to="/smr">Serail ModRegs Relation</Link>
             </li>
             <li>
               <Link to="/mqtt">Mqtt</Link>
@@ -237,13 +245,17 @@ class NavLogIn extends React.Component {
       <nav class="navbar navbar-inverse">
         <div class="container-fluid">
           <div class="navbar-header">
-            <Link class="navbar-brand" to="/home">Modbus to MQTT Gateway Web Interface</Link>
+            <Link class="navbar-brand" to="/home">Modbus to MQTT </Link>
           </div>
 
           <ul class="nav navbar-nav">
+          <li>
+              <Link to="/serial">Serial Port</Link>
+            </li>
             <li>
               <Link to="/modbus">Modbus</Link>
             </li>
+          
             <li>
               <Link to="/mqtt">Mqtt</Link>
             </li>
@@ -473,7 +485,130 @@ class  UserManager extends React.Component {
     );
   }
 }
+class SerialPorts extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      data: [],
+      comport :'',
+      baudrate : 0,
+      databits : 0,
+      byteorder :0,
+      parity :0,
+      stopbits:0,
+      timeout:0,
+    };
+    this.commonChange = this.commonChange.bind(this)
+    this.AddModParams = this.AddModParams.bind(this)
+    this.getmodparams = this.getmodparams.bind(this)
+  }
+  commonChange(event) {
+    // console.log([event.target.name], event.target.value)
+    this.setState({
+      [event.target.name]: event.target.value
+    });
+  }
 
+  getmodparams() {
+    PostGet.Get("api/v1/modbus/params", "GET")
+            .then(response  => response.json())
+            .then(json => {this.setState({ data:json.msg})});
+  }
+
+  componentDidMount() {
+    this.getmodparams();
+  };
+  handleRemoveSerial  = (i) => {
+    PostGet.Get("api/v1/modbus/params/"+i, "DELETE")
+    .then(response  => response.json())
+    .then(json => {
+                   if (json.msg[0].content === "Done") {
+                     // console.log(json.msg)
+                     // alert("user")
+                     this.getmodparams(); 
+                   } else {
+                     alert(json.msg[0].content)
+                     // console.log(json.msg)
+                     this.getmodparams(); 
+                   }
+                   });
+                 
+}
+
+  AddModParams() {
+    var bod = { comport : this.state.comport, baudrate : parseInt(this.state.baudrate) , databits : parseInt(this.state.databits),  parity : this.state.parity, stopbits : parseInt(this.state.stopbits), timeout : parseInt(this.state.timeout) }
+    // console.log(bod)
+    PostGet.Post("api/v1/modbus/params/0", "POST",bod)
+           .then(response  => response.json())
+           .then(json => {
+                            if (json.msg[0].content === "Done") {
+                              // console.log(json.msg)
+                              // alert("user")
+                              this.getmodparams(); 
+                            } else {
+                              alert(json.msg[0].content)
+                              // console.log(json.msg)
+                              this.getmodparams(); 
+                            }
+            });
+
+  }
+
+  render() { 
+    
+    return ( <div>
+       <div class="row">
+         <div class="col-xs-2 panel">
+        <label>Serial Port</label> <input class="form-control" type="text" value={this.state.comport} name="comport" onChange = {this.commonChange }/>
+        </div>
+        <div class="col-xs-1 panel">
+        <label>Baud Rate</label> <input class="form-control" type="number" value={this.state.baudrate} name="baudrate" onChange = {this.commonChange }/>
+        </div>
+        <div class="col-xs-1 panel">
+        <label>Data Bits</label> <input class="form-control" type="number"  value={this.state.databits} name="databits" onChange = {this.commonChange }/> 
+        </div>
+        
+        <div class="col-xs-1 panel">
+        <label>Paraity</label> <input class="form-control" type="text"  value={this.state.parity} name="parity" onChange = {this.commonChange }/>
+        </div>
+        <div class="col-xs-1 panel">
+        <label>Stop Bits</label> <input class="form-control"type="number" value={this.state.stopbits} name="stopbits" onChange = {this.commonChange }/> 
+        </div>
+        <div class="col-xs-1 panel">
+        <label>Timeout </label> <input class="form-control" type="number"  value={this.state.timeout} name="timeout" onChange = {this.commonChange }/>
+        </div>
+
+        <button onClick={this.AddModParams} className="btn btn-primary pull-bottom" >
+          Add Serial
+        </button>
+        </div>
+        <br/>
+
+        <table class="table" >
+        <tr> 
+          <th>ID </th> <th>Serial Port</th> <th>Baud Rate</th> <th>Data Bits</th>
+          <th>Paraity</th> <th>Stop Bits </th> <th>Timeout</th>         
+        </tr>
+
+        <tbody>{this.state.data.map((item, i) => (        
+          <tr key={i}>
+          <td >{item.id}</td> <td >{item.comport}</td><td >{item.baudrate}</td>
+          <td >{item.databits}</td> <td >{item.parity}</td>
+          <td >{item.stopbits}</td> <td >{item.timeout}</td>
+          <td>
+          <button className="btn btn-danger btn-sm" onClick={this.handleRemoveSerial.bind(this, item.id)} >
+              Remove
+          </button>
+          </td>
+          </tr>        
+          )) 
+          } 
+        </tbody>
+      </table>
+    </div>);
+
+    }
+}
 
 class Modbus extends React.Component {
   constructor(props) {
@@ -489,20 +624,13 @@ class Modbus extends React.Component {
       datatype:0,
       postprocess:'',
       tags:'',
-      comport :'',
-      baudrate : 0,
-      databits : 0,
-      byteorder :0,
-      parity :0,
-      stopbits:0,
-      timeout:0,
+      
       
     };
     this.commonChange = this.commonChange.bind(this)
     this.handleAddReg = this.handleAddReg.bind(this)
     this.getmodregs = this.getmodregs.bind(this)
-    this.UpdateModParams = this.UpdateModParams.bind(this)
-    this.getmodparams = this.getmodparams.bind(this)
+   
   
   }
 
@@ -519,35 +647,10 @@ class Modbus extends React.Component {
   }
   componentDidMount() {
     this.getmodregs();
-    this.getmodparams();
   };
 
-  getmodparams() {
-    PostGet.Get("api/v1/modbus/params", "GET")
-           .then(response  => response.json())
-           .then(json => { //console.log(json.msg)
-                            this.setState({ modparams:json.msg[0], comport:json.msg[0].comport, baudrate:json.msg[0].baudrate, databits:json.msg[0].databits, parity:json.msg[0].parity, stopbits:json.msg[0].stopbits, timeout:json.msg[0].timeout })
-                         }
-                );
-  }
-  UpdateModParams() {
-    var bod = { comport : this.state.comport, baudrate : parseInt(this.state.baudrate) , databits : parseInt(this.state.databits),  parity : this.state.parity, stopbits : parseInt(this.state.stopbits), timeout : parseInt(this.state.timeout) }
-    // console.log(bod)
-    PostGet.Post("api/v1/modbus/params", "POST",bod)
-           .then(response  => response.json())
-           .then(json => {
-                            if (json.msg[0].content === "Done") {
-                              // console.log(json.msg)
-                              // alert("user")
-                              this.getmodparams(); 
-                            } else {
-                              alert(json.msg[0].content)
-                              // console.log(json.msg)
-                              this.getmodparams(); 
-                            }
-            });
-
-  }
+  
+  
   handleAddReg(){
     let bod = { name : this.state.name , unit : parseInt(this.state.unit), functcode : parseInt(this.state.functcode), register : parseInt(this.state.register), qty:parseInt(this.state.qty), datatype:parseInt(this.state.datatype),byteorder:parseInt(this.state.byteorder), postprocess:this.state.postprocess, tags:this.state.tags,}
     PostGet.Post("api/v1/modbus/regs/0", "POST",bod)
@@ -649,33 +752,7 @@ class Modbus extends React.Component {
   render() { 
     return (
       <div>
-         <div class="row">
-         <div class="col-xs-2 panel">
-        <label>Com Port</label> <input class="form-control" type="text" value={this.state.comport} name="comport" onChange = {this.commonChange }/>
-        </div>
-        <div class="col-xs-1 panel">
-        <label>Baud Rate</label> <input class="form-control" type="number" value={this.state.baudrate} name="baudrate" onChange = {this.commonChange }/>
-        </div>
-        <div class="col-xs-1 panel">
-        <label>Data Bits</label> <input class="form-control" type="number"  value={this.state.databits} name="databits" onChange = {this.commonChange }/> 
-        </div>
         
-        <div class="col-xs-1 panel">
-        <label>Paraity</label> <input class="form-control" type="text"  value={this.state.parity} name="parity" onChange = {this.commonChange }/>
-        </div>
-        <div class="col-xs-1 panel">
-        <label>Stop Bits</label> <input class="form-control"type="number" value={this.state.stopbits} name="stopbits" onChange = {this.commonChange }/> 
-        </div>
-        <div class="col-xs-1 panel">
-        <label>Timeout </label> <input class="form-control" type="number"  value={this.state.timeout} name="timeout" onChange = {this.commonChange }/>
-        </div>
-        {/* <div class="col-xs-2 panel"> */}
-        <button onClick={this.UpdateModParams} className="btn btn-primary pull-bottom" >
-            Update
-        </button>
-        {/* </div> */}
-        </div>
-        <br/>
 
         <div class="col-xs-2 panel">
         <label>Name &nbsp;</label><input class="form-control" type="text" name="name"  onChange= { this.commonChange }/> &nbsp;
@@ -755,8 +832,13 @@ class Modbus extends React.Component {
       <table class="table" >
         <tr> 
           <th>ID </th> <th>Name</th> <th>Unit</th> <th>Function Code</th>
-          <th>Register</th> <th>Qty</th> <th>DataType</th> <th>Byte Order (Endian)</th> <th>PostProcess</th><th>Tags</th>
-        
+          <th>Register</th> <th>Qty</th> <th>DataType</th> <th>Byte Order (Endian)</th>
+          <th>PostProcess</th><th>Tags</th> <th> Serial Ports </th>
+          {/* <th>Topic ID </th>  */}
+          <th>Topic</th> 
+          {/* <th>Qos</th> <th>Retain</th> */}
+          <th> Remove </th>
+          {/* <th> </th><th> </th><th> </th> */}
         </tr>
         <tbody>{this.state.data.map((item, i) => (        
           <tr key={i}>
@@ -767,16 +849,16 @@ class Modbus extends React.Component {
           <td >{this.getByteOrderText(item.byteorder)}</td> 
           <td >{item.postprocess}</td>
           <td >{item.tags}</td>
-          <td> 
-          <table class="table">
-          <tr> <th>ID </th> <th>Topic</th> <th>Qos</th> <th>Retain</th> </tr>
-          <tbody>{item.mqtopic.map((item, i) => (
+          <td>{item.serialport.map((item, i) => (
+             <tr key={i}> <td >{item.comport}</td> </tr>)) }
+      
+            </td>
+          <td> {item.mqtopic.map((item, i) => (
              <tr key={i}>
-            <td >{item.id}</td><td >{item.topic}</td><td >{item.qos}</td><td >{String(item.retain)}</td>
+            {/* <td >{item.id}</td><td >{item.topic}</td><td >{item.qos}</td><td >{String(item.retain)}</td> */}
+            <td >{item.topic}</td>
             </tr>
           )) }
-          </tbody>
-          </table>
           </td>
           <td>
           <button className="btn btn-danger btn-sm" onClick={this.handleRemoveReg.bind(this, item.id)} >
@@ -790,6 +872,123 @@ class Modbus extends React.Component {
       </table>
       </div>
     );
+  }
+}
+
+class SMR extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      options : [ ],
+      selectedRegs : [],
+      ports : [],
+      selectedPort : 0
+    };
+    this.getmodregs = this.getmodregs.bind(this)
+    this.getports = this.getports.bind(this)
+    this.handlePortChange = this.handlePortChange.bind(this)
+  }
+
+  handleDeselect = (deselectedOptions) => {
+    var selectedRegs = this.state.selectedRegs.slice()
+    deselectedOptions.forEach(option => {
+      selectedRegs.splice(selectedRegs.indexOf(option), 1)
+    })
+    this.setState({selectedRegs})
+  }
+
+  handleSelectionChange = (selectedRegs) => {
+    this.setState({selectedRegs})
+  }
+  
+  getports(){
+    PostGet.Get("api/v1/modbus/params", "GET")
+           .then(response  => response.json())
+           .then(json => {  //console.log(json.msg);
+                            this.setState({ports : json.msg }) ;
+                            if(json.msg[0].hasOwnProperty("modregs")){
+                            this.setState ({ selectedRegs  :   json.msg[0].modregs})
+                            }
+            });
+  }
+
+  getmodregs(){
+    PostGet.Get("api/v1/modbus/regs", "GET")
+           .then(response  => response.json())
+           .then(json => { this.setState({options : json.msg })});
+  }
+
+  componentDidMount(){
+    this.getports()
+    this.getmodregs()
+    
+  }
+
+  handlePortChange(event) {
+    this.setState({selectedPort:event.target.value})
+    this.setState ( { selectedRegs  : this.state.ports[event.target.value].modregs})
+    // console.log(event.target.value)
+    
+  }
+
+  SaveTheRelation = () =>  {
+
+    var modregids = [] 
+    var selectedRegs = this.state.selectedRegs
+    selectedRegs.forEach(reg => 
+      modregids.push(reg.id)
+      ) 
+      var bod = { modregids :modregids }
+      var portid = this.state.ports[this.state.selectedPort].id
+
+    PostGet.Get("api/v1/serial/modregs/" + portid + "/all","DELETE")
+           .then(response  => response.json())
+           .then(json => { 
+                if (json.msg[0].content === "Done") {
+                  if (modregids.length > 0) { 
+                    var bod = { modregids :modregids }
+                    PostGet.Post("api/v1/serial/modregs/" + portid, "POST",bod)
+                          .then(response => response.json())
+                          .then(json => {
+                            if (json.msg[0].content === "Done" ) {
+                              this.getports()
+                            }else{
+                              alert(json.msg[0].content)
+                            }
+                          })
+                  }
+                }else {
+                  alert(json.msg[0].content)
+                }
+           });
+  }
+
+  render() { 
+    return (
+        <div >
+          <div class="row">
+          <div className="col-md-6">
+          <label>Select the Serial Port </label> 
+          <select class="form-control" value={this.state.selectedPort} onChange={this.handlePortChange}>
+          {this.state.ports.map((item,idx) => (
+            <option key= {idx} value={idx}>{ item.comport}</option>
+          ))}
+          </select> 
+          </div>
+          <div className="col-md-6">  
+          <button class="btn btn-success pull-center" type="button" onClick={() => this.SaveTheRelation()}> Save </button>
+          </div>
+          </div>
+          <div className="col-md-6">
+            <h4>Add Modbus Register to Serial Ports </h4>
+            <FilteredMultiSelect buttonText= "Add to Serial Port" className='row' classNames ={{ button:"btn btn-primary", buttonActive:"btn btn-success", filter:"form-control", select:"form-control"}} onChange={this.handleSelectionChange} textProp="name"  valueProp="id" options={this.state.options} selectedOptions={this.state.selectedRegs} />
+            </div>
+            <div className="col-md-6">
+            <h4>Remove Modbus Register from Serial Ports </h4>
+            <FilteredMultiSelect buttonText= "Remove from Serial Port" className='row' classNames ={{ button:"btn btn-primary", buttonActive:"btn btn-danger", filter:"form-control", select:"form-control"}} onChange={this.handleDeselect} textProp="name"  valueProp="id" options={this.state.selectedRegs}  />
+            </div>       
+        </div>
+    )
   }
 }
 
