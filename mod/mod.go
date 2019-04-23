@@ -551,7 +551,7 @@ func MqttPublish2(mqClient mqtt.Client, topic models.Topics, Payload chan map[st
 		}
 	}
 	// fmt.Println("Pusblished data %v", finalPay)
-	// mqClient.Publish(topic.Topic, 0, false, payload)
+	mqClient.Publish(topic.Topic, 0, false, finalPay)
 	// fmt.Sprintf("Topic - %s, Payload- %s", topic.Topic, payload)
 
 	go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Payload- %v", topic.Topic, finalPay)})
@@ -576,7 +576,19 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 			val := results
 			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 			if err == nil {
-				retString[modreg.Tags] = val
+				if strings.Contains(modreg.Tags, ",") {
+					AllTags := strings.Split(modreg.Tags, ",")
+					for i, Tag := range AllTags {
+						if i == (len(AllTags)-1) && len(AllTags) < len(val) {
+							retString[Tag] = val[i:]
+						} else {
+							retString[Tag] = val[i]
+						}
+
+					}
+				} else {
+					retString[modreg.Tags] = val
+				}
 			}
 		} else if modreg.DataType == 3 {
 			// int 8
@@ -604,13 +616,37 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 				val, err := arrUint16frombytesPP(results, modreg.ByteOrder, modreg.PostProcess)
 				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
-					retString[modreg.Tags] = val
+					if strings.Contains(modreg.Tags, ",") {
+						AllTags := strings.Split(modreg.Tags, ",")
+						for i, Tag := range AllTags {
+							if i == (len(AllTags)-1) && len(AllTags) < len(val) {
+								retString[Tag] = val[i:]
+							} else {
+								retString[Tag] = val[i]
+							}
+
+						}
+					} else {
+						retString[modreg.Tags] = val
+					}
 				}
 			} else {
 				val, err := arrUint16frombytes(results, modreg.ByteOrder)
 				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
-					retString[modreg.Tags] = val
+					if strings.Contains(modreg.Tags, ",") {
+						AllTags := strings.Split(modreg.Tags, ",")
+						for i, Tag := range AllTags {
+							if i == (len(AllTags)-1) && len(AllTags) < len(val) {
+								retString[Tag] = val[i:]
+							} else {
+								retString[Tag] = val[i]
+							}
+
+						}
+					} else {
+						retString[modreg.Tags] = val
+					}
 				}
 			}
 
@@ -636,13 +672,37 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 				val, err := arrUint16frombytesPP(results, modreg.ByteOrder, modreg.PostProcess)
 				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
-					retString[modreg.Tags] = val
+					if strings.Contains(modreg.Tags, ",") {
+						AllTags := strings.Split(modreg.Tags, ",")
+						for i, Tag := range AllTags {
+							if i == (len(AllTags)-1) && len(AllTags) < len(val) {
+								retString[Tag] = val[i:]
+							} else {
+								retString[Tag] = val[i]
+							}
+
+						}
+					} else {
+						retString[modreg.Tags] = val
+					}
 				}
 			} else {
 				val, err := arrUint16frombytes(results, modreg.ByteOrder)
 				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
-					retString[modreg.Tags] = val
+					if strings.Contains(modreg.Tags, ",") {
+						AllTags := strings.Split(modreg.Tags, ",")
+						for i, Tag := range AllTags {
+							if i == (len(AllTags)-1) && len(AllTags) < len(val) {
+								retString[Tag] = val[i:]
+							} else {
+								retString[Tag] = val[i]
+							}
+
+						}
+					} else {
+						retString[modreg.Tags] = val
+					}
 				}
 			}
 		} else if modreg.DataType == 9 {
@@ -674,7 +734,19 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 			val, err := arrFloat32frombytes(results, modreg.ByteOrder)
 			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %f, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 			if err == nil {
-				retString[modreg.Tags] = val
+				if strings.Contains(modreg.Tags, ",") {
+					AllTags := strings.Split(modreg.Tags, ",")
+					for i, Tag := range AllTags {
+						if i == (len(AllTags)-1) && len(AllTags) < len(val) {
+							retString[Tag] = val[i:]
+						} else {
+							retString[Tag] = val[i]
+						}
+
+					}
+				} else {
+					retString[modreg.Tags] = val
+				}
 			}
 
 		} else if modreg.DataType == 19 {
