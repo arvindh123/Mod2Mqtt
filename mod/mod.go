@@ -550,11 +550,14 @@ func MqttPublish2(mqClient mqtt.Client, topic models.Topics, Payload chan map[st
 			finalPay[k] = v
 		}
 	}
+	final, err := json.Marshal(finalPay)
 	// fmt.Println("Pusblished data %v", finalPay)
-	mqClient.Publish(topic.Topic, 0, false, finalPay)
-	// fmt.Sprintf("Topic - %s, Payload- %s", topic.Topic, payload)
-
-	go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Payload- %v", topic.Topic, finalPay)})
+	if err == nil {
+		mqClient.Publish(topic.Topic, 0, false, final)
+		go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Payload- %v", topic.Topic, finalPay)})
+	} else {
+		go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Before Marshal Payload- %v, Error in Marshal -> Err- %v", topic.Topic, finalPay, err)})
+	}
 
 	// wg.Done()
 
@@ -711,8 +714,30 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 			// []uint32
 		} else if modreg.DataType == 11 {
 			// int32
+			val, err := SingleUint32FromBytes(results, modreg.ByteOrder)
+			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+			if err == nil {
+				retString[modreg.Tags] = val
+			}
 		} else if modreg.DataType == 12 {
 			// []int32
+			val, err := arrUint32frombytes(results, modreg.ByteOrder)
+			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+			if err == nil {
+				if strings.Contains(modreg.Tags, ",") {
+					AllTags := strings.Split(modreg.Tags, ",")
+					for i, Tag := range AllTags {
+						if i == (len(AllTags)-1) && len(AllTags) < len(val) {
+							retString[Tag] = val[i:]
+						} else {
+							retString[Tag] = val[i]
+						}
+
+					}
+				} else {
+					retString[modreg.Tags] = val
+				}
+			}
 		} else if modreg.DataType == 13 {
 			// uint64
 		} else if modreg.DataType == 14 {
