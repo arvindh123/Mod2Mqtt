@@ -1,25 +1,27 @@
 package main
 
-import "fmt"
-import "time"
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func saygo(s string, wg *sync.WaitGroup) {
+	time.Sleep(time.Duration(1) * time.Second)
+	fmt.Println(s)
+	wg.Done()
+}
+
+func say(s string) {
+	time.Sleep(time.Duration(1) * time.Second)
+	fmt.Println(s)
+}
 
 func main() {
-	c := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go saygo("world", &wg)
+	say("hello")
+	wg.Wait()
 
-	go subrot(c)
-	time.Sleep(1 * time.Second)
-	select {
-	case c <- 1:
-	default:
-	}
-	fmt.Println("Hello")
-	time.Sleep(2 * time.Second)
-	// c <- 99
-	time.Sleep(1 * time.Second)
-}
-func subrot(c chan int) {
-	fmt.Println("In Subrot")
-	// time.Sleep(5 * time.	)
-	msg := <-c
-	fmt.Println(msg)
 }

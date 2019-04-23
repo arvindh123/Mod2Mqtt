@@ -8,10 +8,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"strings"
 	"sync"
-
-	_ "net/http/pprof"
 
 	"./mod"
 
@@ -129,13 +128,14 @@ func main() {
 	// NOTE: See we’re using = to assign the global var
 	// instead of := which would assign it only in this function
 	var handlers []*modbus.RTUClientHandler
-	var clients []modbus.Client
 	var retErrs []error
 	var mqErr error
 	var mqClient mqtt.Client
-	var wg2 sync.WaitGroup
-	var ModChance chan byte
+	var wg sync.WaitGroup
+	SpanStopper := make(map[string](chan int))
+	PortChance := make(map[string](chan int))
 	var err error
+	var status bool = false
 
 	webModMqChan := make(chan int)
 	_ = webModMqChan
@@ -210,7 +210,7 @@ func main() {
 		apiV1.DELETE("/serial/modregs/:id", DelPort2Regs)
 		apiV1.DELETE("/serial/modregs/:id/all", DelPort2RegsAll)
 	}
-	go handleMessages(handlers, clients, mqClient, &wg2, ModChance, mqErr, retErrs)
+	go handleMessages(status, handlers, mqClient, SpanStopper, PortChance, &wg, retErrs, mqErr)
 	r.Run(":5000")
 	// log.Println(http.ListenAndServe("localhost:6060", nil))
 
@@ -238,7 +238,7 @@ func wshandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func handleMessages(handlers []*modbus.RTUClientHandler, clients []modbus.Client, mqClient mqtt.Client, wg2 *sync.WaitGroup, ModChance chan byte, mqErr error, retErrs []error) {
+func handleMessages(status bool, handlers []*modbus.RTUClientHandler, mqClient mqtt.Client, SpanStopper map[string](chan int), PortChance map[string](chan int), wg *sync.WaitGroup, retErrs []error, mqErr error) {
 	var dat map[string]interface{}
 	for {
 		msg := <-broadcast
@@ -250,14 +250,27 @@ func handleMessages(handlers []*modbus.RTUClientHandler, clients []modbus.Client
 			for k, v := range dat {
 				if k == "Cmd" {
 					if v == "1" {
+						if !status {
+							status, handlers, mqClient, SpanStopper, PortChance, wg, retErrs, mqErr = mod.MultiModMqProcessStart(db, status, wsClientsChan)
+						} else {
+							fmt.Println("Already Running")
+						}
+						if mqErr != nil {
+							fmt.Println("Stoping due to MqErr")
+							mod.MultiModMqProcessStop(handlers, mqClient, SpanStopper, PortChance, wg)
+							status = false
+						}
 
-						handlers, clients, mqClient, wg2, ModChance, mqErr, retErrs = mod.MultiModMqProcessStart(db, wsClientsChan)
-						if err != nil && retErrs != nil {
-							mod.MultiModMqProcessStop(handlers, mqClient, wg2, ModChance)
+						for _, modErr := range retErrs {
+							if modErr != nil {
+								fmt.Println("Stoping due to modErr")
+								mod.MultiModMqProcessStop(handlers, mqClient, SpanStopper, PortChance, wg)
+								status = false
+							}
 						}
 					} else if v == "2" {
-
-						err = mod.MultiModMqProcessStop(handlers, mqClient, wg2, ModChance)
+						err = mod.MultiModMqProcessStop(handlers, mqClient, SpanStopper, PortChance, wg)
+						status = false
 					}
 				} else {
 					for client := range wsClients {

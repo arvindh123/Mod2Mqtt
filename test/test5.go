@@ -18,9 +18,10 @@ func main() {
 	// 	fmt.Println(err)
 	// }
 	// fmt.Print(value)
-	a := 5
+	var a uint16 = 5001
 	// fmt.Println(a[2])
-	ArrPostProcess("value * 2", a)
+	// ArrPostProcess("value / 10 :: value / 100 :: value / 1000", a)
+	GenJson(`{"a":1, "b":2, "c":"foo"}`)
 }
 
 func ArrPostProcess(ppstring string, values ...interface{}) {
@@ -50,7 +51,8 @@ func ArrPostProcess(ppstring string, values ...interface{}) {
 
 		default:
 			s := reflect.ValueOf(value)
-			fmt.Println(s)
+			fmt.Println(s, reflect.TypeOf(value).Kind())
+
 			SinglePostProcess(ppstrings[0], value)
 		}
 
@@ -60,6 +62,13 @@ func ArrPostProcess(ppstring string, values ...interface{}) {
 
 func SinglePostProcess(ppstring string, value interface{}) (interface{}, error) {
 	value, err := gval.Evaluate(ppstring, map[string]interface{}{"value": value})
+	fmt.Println(value, err)
+	return value, err
+
+}
+
+func GenJson(ppstring string) (interface{}, error) {
+	value, err := gval.Evaluate(ppstring)
 	fmt.Println(value, err)
 	return value, err
 

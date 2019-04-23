@@ -733,7 +733,34 @@ class Modbus extends React.Component {
         return "I dont know"
   }
   }
-
+  getFunctionCode = (i) => {
+    switch(i){
+      case 1:
+        return "Read Coil FC-1" 
+      case 2:
+        return "Read Discrete Input FC-2"
+      case 3:
+        return "Read Holding Registers FC-3"
+      case 4:
+        return "Read Input Registers FC-4"
+      case 5:
+        return "Write Single Coil FC-5" 
+      case 6:
+        return "Write Single Holding Register FC-6"
+      case 15:
+        return "Write Multiple Coils FC-15"
+      case 16:
+        return "Write Multiple Holding Registers FC-16"
+      case 90:
+        return "Suid"
+      case 99:
+        return "Unix Ts"
+      case 98:
+        return "Ts with UTC"
+      default:
+        return "I dont know"
+  }
+  }
 
   getByteOrderText = (i) => {
     switch(i){
@@ -763,7 +790,19 @@ class Modbus extends React.Component {
         </div>
 
         <div class="col-xs-2 panel">
-        <label>Function Code &nbsp;</label><input class="form-control" type="number" name="functcode" onChange= { this.commonChange }/> &nbsp;
+        <label>Function Code &nbsp;</label>
+        <select  class="form-control" name="functcode" onChange={this.commonChange}>
+          <option ></option>
+            <option value ="1">Read Coil FC-1</option>
+            <option value ="2">Read Discrete Input FC-2</option>
+            <option value ="3">Read Holding Registers FC-3</option>
+            <option value ="4">Read Input Registers FC-4</option>
+            <option value ="90">Suid</option>
+            <option value ="98">Ts with UTC</option>
+            <option value ="99">Unix Ts</option>
+
+        </select>
+        &nbsp;
         </div>
 
         <div class="col-xs-1 panel">
@@ -843,7 +882,7 @@ class Modbus extends React.Component {
         <tbody>{this.state.data.map((item, i) => (        
           <tr key={i}>
           <td >{item.id}</td> <td >{item.name}</td>
-          <td >{item.unit}</td> <td >{item.functcode}</td>
+          <td >{item.unit}</td> <td >{this.getFunctionCode(item.functcode)}</td>
           <td >{item.register}</td> <td >{item.qty}</td>
           <td >{this.getDataTypeName(item.datatype)}</td> 
           <td >{this.getByteOrderText(item.byteorder)}</td> 
