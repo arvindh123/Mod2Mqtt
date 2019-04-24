@@ -887,7 +887,7 @@ class Modbus extends React.Component {
           <td >{this.getDataTypeName(item.datatype)}</td> 
           <td >{this.getByteOrderText(item.byteorder)}</td> 
           <td >{item.postprocess}</td>
-          <td >{item.tags}</td>
+          <td >{item.tags.split(",").map( (tag,i) => ( <tr key={i}> <td> {tag} </td></tr> ) )}</td>
           <td>{item.serialport.map((item, i) => (
              <tr key={i}> <td >{item.comport}</td> </tr>)) }
       
