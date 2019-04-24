@@ -467,6 +467,12 @@ func MultiModSpwaner2(mqClient mqtt.Client, topic models.Topics, SpanStopperTopi
 			close(Payload)
 			// MqWg.Wait()
 		}
+
+		if topic.Delay > 0 {
+			time.Sleep(time.Duration(topic.Delay) * time.Second)
+
+		}
+
 	}
 	// return
 
@@ -568,7 +574,7 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 	retString := make(map[string]interface{})
 	if err == nil {
 		if modreg.DataType == 1 {
-			// uint 8
+			// 1 - uint 8 // 3 - int 8
 			val := results
 			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 			if err == nil {
@@ -744,8 +750,30 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 			// []uint64
 		} else if modreg.DataType == 15 {
 			// int64
+			val, err := SingleUint64FromBytes(results, modreg.ByteOrder)
+			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+			if err == nil {
+				retString[modreg.Tags] = val
+			}
 		} else if modreg.DataType == 16 {
 			// []int64
+			val, err := arrUint64frombytes(results, modreg.ByteOrder)
+			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+			if err == nil {
+				if strings.Contains(modreg.Tags, ",") {
+					AllTags := strings.Split(modreg.Tags, ",")
+					for i, Tag := range AllTags {
+						if i == (len(AllTags)-1) && len(AllTags) < len(val) {
+							retString[Tag] = val[i:]
+						} else {
+							retString[Tag] = val[i]
+						}
+
+					}
+				} else {
+					retString[modreg.Tags] = val
+				}
+			}
 		} else if modreg.DataType == 17 {
 			// float32
 			val, err := SingleFloat32FromBytes(results, modreg.ByteOrder)
@@ -1056,6 +1084,78 @@ func arrUint32frombytes(bytes []byte, byteorder uint8) ([]uint32, error) {
 	} else {
 		ret_val = append(ret_val, 0)
 		return ret_val, errors.New("Array length is not greater than 4")
+	}
+}
+
+func SingleUint64FromBytes(bytes []byte, byteorder uint8) (uint64, error) {
+	bytes_len := len(bytes)
+	var val uint64
+	if bytes_len == 8 {
+		if byteorder == 1 { // comparison  1 = Big Endian
+			val = binary.BigEndian.Uint64(bytes)
+			return val, nil
+		} else if byteorder == 2 {
+			val = binary.LittleEndian.Uint64(bytes)
+			return val, nil
+		} else if byteorder == 3 {
+			reordered := []byte{bytes[1], bytes[0], bytes[3], bytes[2], bytes[5], bytes[4], bytes[7], bytes[6]}
+			val = binary.BigEndian.Uint64(reordered)
+			return val, nil
+		} else if byteorder == 4 {
+			reordered := []byte{bytes[1], bytes[0], bytes[3], bytes[2], bytes[5], bytes[4], bytes[7], bytes[6]}
+			val = binary.LittleEndian.Uint64(reordered)
+			return val, nil
+		} else {
+			return 0, errors.New("Byte Order not specified")
+		}
+	} else {
+		return 0, errors.New("Array length is not equal to 8")
+	}
+}
+
+func arrUint64frombytes(bytes []byte, byteorder uint8) ([]uint64, error) {
+	var splitnos, split_lim, bytes_len int
+	splitnos = 8 //change this to 8 if the float64
+	bytes_len = len(bytes)
+	split_lim = bytes_len / splitnos
+	var ret_val []uint64
+	var val uint64
+
+	if bytes_len >= 8 {
+		if byteorder == 1 { // comparison  1 = Big Endian
+			for i := 0; i < split_lim; i++ {
+				val = binary.BigEndian.Uint64(bytes[(i * splitnos):((i + 1) * splitnos)])
+				ret_val = append(ret_val, val)
+			}
+		} else if byteorder == 2 { // comparison  2 = Little Endian
+			for i := 0; i < split_lim; i++ {
+				val = binary.LittleEndian.Uint64(bytes[(i * splitnos):((i + 1) * splitnos)])
+				ret_val = append(ret_val, val)
+			}
+
+		} else if byteorder == 3 { // comparison  3 = Mid-Big Endian
+			for i := 0; i < split_lim; i++ {
+				tempBytes := bytes[(i * splitnos):((i + 1) * splitnos)]
+				reordered := []byte{tempBytes[1], tempBytes[0], tempBytes[3], tempBytes[2], tempBytes[5], tempBytes[4], tempBytes[7], tempBytes[6]}
+				val = binary.BigEndian.Uint64(reordered)
+				ret_val = append(ret_val, val)
+			}
+
+		} else if byteorder == 4 { // comparison  4 = Mid-Littleittle Endian
+			for i := 0; i < split_lim; i++ {
+				tempBytes := bytes[(i * splitnos):((i + 1) * splitnos)]
+				reordered := []byte{tempBytes[1], tempBytes[0], tempBytes[3], tempBytes[2], tempBytes[5], tempBytes[4], tempBytes[7], tempBytes[6]}
+				val = binary.LittleEndian.Uint64(reordered)
+				ret_val = append(ret_val, val)
+			}
+		} else {
+			ret_val = append(ret_val, 0)
+			return ret_val, errors.New("Byte Order not specified")
+		}
+		return ret_val, nil
+	} else {
+		ret_val = append(ret_val, 0)
+		return ret_val, errors.New("Array length is not greater than 8")
 	}
 }
 
