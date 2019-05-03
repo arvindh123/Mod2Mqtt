@@ -132,7 +132,7 @@ func main() {
 	var mqErr error
 	var mqClient mqtt.Client
 	var wg sync.WaitGroup
-	SpanStopper := make(map[string](chan int))
+	SpanStopper := make(map[int](chan int))
 	PortChance := make(map[string](chan int))
 	var err error
 	var status bool = false
@@ -238,7 +238,7 @@ func wshandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func handleMessages(status bool, handlers []*modbus.RTUClientHandler, mqClient mqtt.Client, SpanStopper map[string](chan int), PortChance map[string](chan int), wg *sync.WaitGroup, retErrs []error, mqErr error) {
+func handleMessages(status bool, handlers []*modbus.RTUClientHandler, mqClient mqtt.Client, SpanStopper map[int](chan int), PortChance map[string](chan int), wg *sync.WaitGroup, retErrs []error, mqErr error) {
 	var dat map[string]interface{}
 	for {
 		msg := <-broadcast
