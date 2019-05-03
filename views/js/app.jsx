@@ -757,6 +757,8 @@ class Modbus extends React.Component {
         return "Unix Ts"
       case 98:
         return "Ts with UTC"
+      case 97:
+        return "Ts with Format in Post Process"
       default:
         return "I dont know"
   }
@@ -798,6 +800,7 @@ class Modbus extends React.Component {
             <option value ="3">Read Holding Registers FC-3</option>
             <option value ="4">Read Input Registers FC-4</option>
             <option value ="90">Suid</option>
+            <option value ="97">Ts with Format in Post Process</option>
             <option value ="98">Ts with UTC</option>
             <option value ="99">Unix Ts</option>
 

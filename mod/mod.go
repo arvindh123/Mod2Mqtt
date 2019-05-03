@@ -548,6 +548,13 @@ func ModOperation2(topic models.Topics, RegsPort ModSpawner, Payload chan map[st
 					tpay["ts"] = int32(time.Now().Unix())
 				case 98:
 					tpay["ts"] = time.Now().Round(0)
+				case 97:
+					if len(modreg.PostProcess) > 0 {
+						tpay["ts"] = time.Now().Format(modreg.PostProcess)
+					} else {
+						tpay["ts"] = time.Now().Round(0)
+					}
+
 				}
 				if modreg.FunctCode < 90 {
 					Processed := ModReadDataProcess(topic, &modreg, results, err)
