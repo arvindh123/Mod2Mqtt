@@ -54,11 +54,30 @@ type MqLastSent struct {
 	MqLastSent string `json:"mqlastsent"`
 }
 
-type JSONString string
+// type JSONString string
 
-func (j JSONString) MarshalJSON() ([]byte, error) {
-	return []byte(j), nil
+// func (j JSONString) MarshalJSON() ([]byte, error) {
+// 	return []byte(j), nil
+// }
+
+type myF64 float64
+
+func (f myF64) MarshalJSON() ([]byte, error) {
+	if float64(f) == float64(int(f)) {
+		return []byte(strconv.FormatFloat(float64(f), 'f', 1, 32)), nil
+	}
+	return json.Marshal(f)
 }
+
+// func (mf myF64) MarshalJSON() ([]byte, error) {
+// 	const ε = 1e-12
+// 	v := float64(mf)
+// 	w, f := math.Modf(v)
+// 	if f < ε {
+// 		return []byte(fmt.Sprintf(`%v.0`, math.Trunc(w))), nil
+// 	}
+// 	return json.Marshal(v)
+// }
 
 var WsClients = make(map[*websocket.Conn]bool)
 var mu, processMu sync.Mutex
@@ -452,13 +471,19 @@ func MultiModSpawner1(mqClient mqtt.Client, topic models.Topics, SpanStopperTopi
 				wgMain.Done()
 				return
 			}
-		default:
+		// default:
+		// 	// if Need to spawn topic after completetion each task then use below  WaitGroup
+		// 	// var WgModSpaw2 sync.WaitGroup
+		// 	// WgModSpaw2.Add(1)
+		// 	go MultiModSpawner2(mqClient, topic, SpanStopperTopic, RegsPorts) //, &WgModSpaw2)
+		// 	// WgModSpaw2.Wait()
+		// 	time.Sleep(time.Duration(topic.Delay) * time.Second)
+		case <-time.After(time.Duration(topic.Delay) * time.Second):
 			// if Need to spawn topic after completetion each task then use below  WaitGroup
 			// var WgModSpaw2 sync.WaitGroup
 			// WgModSpaw2.Add(1)
 			go MultiModSpawner2(mqClient, topic, SpanStopperTopic, RegsPorts) //, &WgModSpaw2)
 			// WgModSpaw2.Wait()
-			time.Sleep(time.Duration(topic.Delay) * time.Second)
 		}
 	}
 }
@@ -639,14 +664,14 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 		if modreg.DataType == 1 {
 			// 1 - uint 8 // 3 - int 8
 			val := results
-			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 			if err == nil {
 				retString[modreg.Tags] = val
 			}
 		} else if modreg.DataType == 2 {
 			// []uint 8
 			val := results
-			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 			if err == nil {
 				if strings.Contains(modreg.Tags, ",") {
 					AllTags := strings.Split(modreg.Tags, ",")
@@ -670,13 +695,13 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 			// uint16
 			if strings.Contains(modreg.PostProcess, "value") {
 				val, err := SingleUint16FromBytesPP(results, modreg.ByteOrder, modreg.PostProcess)
-				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
 					retString[modreg.Tags] = val
 				}
 			} else {
 				val, err := SingleUint16FromBytes(results, modreg.ByteOrder)
-				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
 					retString[modreg.Tags] = val
 				}
@@ -686,7 +711,7 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 			// []uint16
 			if strings.Contains(modreg.PostProcess, "value") {
 				val, err := arrUint16frombytesPP(results, modreg.ByteOrder, modreg.PostProcess)
-				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
 					if strings.Contains(modreg.Tags, ",") {
 						AllTags := strings.Split(modreg.Tags, ",")
@@ -704,7 +729,7 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 				}
 			} else {
 				val, err := arrUint16frombytes(results, modreg.ByteOrder)
-				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
 					if strings.Contains(modreg.Tags, ",") {
 						AllTags := strings.Split(modreg.Tags, ",")
@@ -726,13 +751,13 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 			// int16
 			if strings.Contains(modreg.PostProcess, "value") {
 				val, err := SingleUint16FromBytesPP(results, modreg.ByteOrder, modreg.PostProcess)
-				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
 					retString[modreg.Tags] = val
 				}
 			} else {
 				val, err := SingleUint16FromBytes(results, modreg.ByteOrder)
-				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
 					retString[modreg.Tags] = val
 				}
@@ -742,7 +767,7 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 			// []int16
 			if strings.Contains(modreg.PostProcess, "value") {
 				val, err := arrUint16frombytesPP(results, modreg.ByteOrder, modreg.PostProcess)
-				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
 					if strings.Contains(modreg.Tags, ",") {
 						AllTags := strings.Split(modreg.Tags, ",")
@@ -760,7 +785,7 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 				}
 			} else {
 				val, err := arrUint16frombytes(results, modreg.ByteOrder)
-				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+				go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 				if err == nil {
 					if strings.Contains(modreg.Tags, ",") {
 						AllTags := strings.Split(modreg.Tags, ",")
@@ -784,14 +809,14 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 		} else if modreg.DataType == 11 {
 			// int32
 			val, err := SingleUint32FromBytes(results, modreg.ByteOrder)
-			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 			if err == nil {
 				retString[modreg.Tags] = val
 			}
 		} else if modreg.DataType == 12 {
 			// []int32
 			val, err := arrUint32frombytes(results, modreg.ByteOrder)
-			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 			if err == nil {
 				if strings.Contains(modreg.Tags, ",") {
 					AllTags := strings.Split(modreg.Tags, ",")
@@ -814,14 +839,14 @@ func ModReadDataProcess(topic models.Topics, modreg *models.ModbusRegisters, res
 		} else if modreg.DataType == 15 {
 			// int64
 			val, err := SingleUint64FromBytes(results, modreg.ByteOrder)
-			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 			if err == nil {
 				retString[modreg.Tags] = val
 			}
 		} else if modreg.DataType == 16 {
 			// []int64
 			val, err := arrUint64frombytes(results, modreg.ByteOrder)
-			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %d, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
+			go WsClientPub(ModLastAquired{fmt.Sprintf("Topic- %s, Reg Name- %s, Register - %d, Value %v, err- %v ", topic.Topic, modreg.Name, modreg.Register, val, err)})
 			if err == nil {
 				if strings.Contains(modreg.Tags, ",") {
 					AllTags := strings.Split(modreg.Tags, ",")
@@ -973,6 +998,12 @@ func Float64bytes(float float64) []byte {
 
 func SinglePostProcess(ppstring string, value interface{}) (interface{}, error) {
 	val, err := gval.Evaluate(ppstring, map[string]interface{}{"value": value})
+	switch val.(type) {
+	case float64:
+		if val == math.Trunc(val.(float64)) {
+			val = myF64(val.(float64))
+		}
+	}
 	if err != nil {
 		go WsStatusPub(WsClients, fmt.Sprintf("Error in Post Process Ppstring -%s Value -%v", ppstring, value))
 	}
