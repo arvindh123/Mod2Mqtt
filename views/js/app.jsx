@@ -490,11 +490,15 @@ class SerialPorts extends React.Component {
     super(props);
     this.state = {
       data: [],
+      name :'',
+      type : 0,
+      ipadd : '',
+      port : 0,
       comport :'',
       baudrate : 0,
       databits : 0,
       byteorder :0,
-      parity :0,
+      parity :'',
       stopbits:0,
       timeout:0,
     };
@@ -533,10 +537,27 @@ class SerialPorts extends React.Component {
                    }
                    });
                  
-}
+  }
+
+  getType = (i) => {
+    switch(i){
+      case 1:
+        return "Modbus Serial RTU"
+      case 2:
+        return "Modbus TCP/IP"
+      default :
+        return "Don't Know"
+    }
+  }
 
   AddModParams() {
-    var bod = { comport : this.state.comport, baudrate : parseInt(this.state.baudrate) , databits : parseInt(this.state.databits),  parity : this.state.parity, stopbits : parseInt(this.state.stopbits), timeout : parseInt(this.state.timeout) }
+    var bod = {
+               name : this.state.name, type : parseInt(this.state.type), ipadd : this.state.ipadd,
+               port : parseInt(this.state.port), comport : this.state.comport, 
+               baudrate : parseInt(this.state.baudrate) , databits : parseInt(this.state.databits),  
+               parity : this.state.parity, stopbits : parseInt(this.state.stopbits), 
+               timeout : parseInt(this.state.timeout) 
+              }
     // console.log(bod)
     PostGet.Post("api/v1/modbus/params/0", "POST",bod)
            .then(response  => response.json())
@@ -558,6 +579,23 @@ class SerialPorts extends React.Component {
     
     return ( <div>
        <div class="row">
+       <div class="col-xs-2 panel">
+        <label>Name</label> <input class="form-control" type="text" value={this.state.name} name="name" onChange = {this.commonChange }/>
+        </div>
+        <div class="col-xs-2 panel">
+        <label>Type</label> 
+          <select  class="form-control" name="type" onChange={this.commonChange}>
+            <option ></option>
+              <option value ="1">Modbus Serial RTU</option>
+              <option value ="2">Modbus TCP/IP</option>
+          </select>
+        </div>
+        <div class="col-xs-2 panel">
+        <label>IP Address</label> <input class="form-control" type="text" value={this.state.ipadd} name="ipadd" onChange = {this.commonChange }/>
+        </div>
+        <div class="col-xs-2 panel">
+        <label>Port </label> <input class="form-control" type="text" value={this.state.port} name="port" onChange = {this.commonChange }/>
+        </div>
          <div class="col-xs-2 panel">
         <label>Serial Port</label> <input class="form-control" type="text" value={this.state.comport} name="comport" onChange = {this.commonChange }/>
         </div>
@@ -586,13 +624,16 @@ class SerialPorts extends React.Component {
 
         <table class="table" >
         <tr> 
-          <th>ID </th> <th>Serial Port</th> <th>Baud Rate</th> <th>Data Bits</th>
-          <th>Paraity</th> <th>Stop Bits </th> <th>Timeout</th>         
+          <th>ID </th> <th>Name</th> <th>Type</th> <th>Ip Address</th> 
+          <th>Port</th> <th>Serial Port</th> <th>Baud Rate</th> 
+          <th>Data Bits</th> <th>Paraity</th> <th>Stop Bits </th> <th>Timeout</th>         
         </tr>
 
         <tbody>{this.state.data.map((item, i) => (        
           <tr key={i}>
-          <td >{item.id}</td> <td >{item.comport}</td><td >{item.baudrate}</td>
+          <td >{item.id}</td> <td>{item.name}</td> <td>{this.getType(item.type)}</td>
+          <td> {item.ipadd} </td> <td> {item.port} </td>
+          <td >{item.comport}</td><td >{item.baudrate}</td>
           <td >{item.databits}</td> <td >{item.parity}</td>
           <td >{item.stopbits}</td> <td >{item.timeout}</td>
           <td>
@@ -731,7 +772,7 @@ class Modbus extends React.Component {
        
       default:
         return "I dont know"
-  }
+    }
   }
   getFunctionCode = (i) => {
     switch(i){
@@ -918,6 +959,7 @@ class Modbus extends React.Component {
 }
 
 class SMR extends React.Component {
+  // SMR - Serial Port and  Modbus Registers  Relationship mapping
   constructor(props) {
     super(props);
     this.state = {
@@ -1013,7 +1055,7 @@ class SMR extends React.Component {
           <label>Select the Serial Port </label> 
           <select class="form-control" value={this.state.selectedPort} onChange={this.handlePortChange}>
           {this.state.ports.map((item,idx) => (
-            <option key= {idx} value={idx}>{ item.comport}</option>
+            <option key= {idx} value={idx}>{ item.name}</option>
           ))}
           </select> 
           </div>
