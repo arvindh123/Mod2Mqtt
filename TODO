@@ -1,0 +1,13 @@
+During stop , getting error , 
+    this is due to mod.go
+        results, err = RegsSerPort.RtuClient.ReadCoils(modreg.Register, modreg.Qty)
+    Need to Change to and check reverse effect
+        results, err := RegsSerPort.RtuClient.ReadCoils(modreg.Register, modreg.Qty)
+
+Need to Add auto start with delay options
+
+Need to Add Retry with Delay and Max Count
+
+Need to Add new Table
+    Column for Set Auto Start, Auto Start Delay
+    Column for Retry Delay, Retry Max Count
