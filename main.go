@@ -38,6 +38,14 @@ var wsupgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+type MyRtuHandler struct {
+	*modbus.RTUClientHandler
+}
+
+type MyTcpHandler struct {
+	*modbus.TCPClientHandler
+}
+
 type rdmsg struct {
 	ty  int
 	msg []byte
@@ -131,8 +139,10 @@ type ModbusRegisters struct {
 func main() {
 	// NOTE: See we’re using = to assign the global var
 	// instead of := which would assign it only in this function
-	var handlers []*modbus.RTUClientHandler
-	var retErrs []error
+	var RtuHandlers []*modbus.RTUClientHandler
+	var RtuErrs []error
+	var TcpHandlers []*modbus.TCPClientHandler
+	var TcpErrs []error
 	var mqErr error
 	var mqClient mqtt.Client
 	var wg sync.WaitGroup
@@ -214,7 +224,7 @@ func main() {
 		apiV1.DELETE("/serial/modregs/:id", DelPort2Regs)
 		apiV1.DELETE("/serial/modregs/:id/all", DelPort2RegsAll)
 	}
-	go handleMessages(status, handlers, mqClient, SpanStopper, PortChance, &wg, retErrs, mqErr)
+	go handleMessages(status, RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, &wg, RtuErrs, TcpErrs, mqErr)
 	r.Run(":5000")
 	// log.Println(http.ListenAndServe("localhost:6060", nil))
 
@@ -242,7 +252,7 @@ func wshandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func handleMessages(status bool, handlers []*modbus.RTUClientHandler, mqClient mqtt.Client, SpanStopper map[int](chan int), PortChance map[string](chan int), wg *sync.WaitGroup, retErrs []error, mqErr error) {
+func handleMessages(status bool, RtuHandlers []*modbus.RTUClientHandler, TcpHandlers []*modbus.TCPClientHandler, mqClient mqtt.Client, SpanStopper map[int](chan int), PortChance map[string](chan int), wg *sync.WaitGroup, RtuErrs []error, TcpErrs []error, mqErr error) {
 	var dat map[string]interface{}
 	for {
 		msg := <-broadcast
@@ -255,25 +265,33 @@ func handleMessages(status bool, handlers []*modbus.RTUClientHandler, mqClient m
 				if k == "Cmd" {
 					if v == "1" {
 						if !status {
-							status, handlers, mqClient, SpanStopper, PortChance, wg, retErrs, mqErr = mod.MultiModMqProcessStart(db, status, wsClientsChan)
+							status, RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg, RtuErrs, TcpErrs, mqErr = mod.MultiModMqProcessStart(db, status, wsClientsChan)
 						} else {
 							fmt.Println("Already Running")
 						}
 						if mqErr != nil {
 							fmt.Println("Stoping due to MqErr")
-							mod.MultiModMqProcessStop(handlers, mqClient, SpanStopper, PortChance, wg)
+							mod.MultiModMqProcessStop(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg)
 							status = false
 						}
 
-						for _, modErr := range retErrs {
+						for _, modErr := range RtuErrs {
 							if modErr != nil {
-								fmt.Println("Stoping due to modErr")
-								mod.MultiModMqProcessStop(handlers, mqClient, SpanStopper, PortChance, wg)
+								fmt.Println("Stoping due to Modbus RTU Error")
+								mod.MultiModMqProcessStop(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg)
+								status = false
+							}
+						}
+
+						for _, modErr := range TcpErrs {
+							if modErr != nil {
+								fmt.Println("Stoping due to Modbus TCP Error")
+								mod.MultiModMqProcessStop(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg)
 								status = false
 							}
 						}
 					} else if v == "2" {
-						err = mod.MultiModMqProcessStop(handlers, mqClient, SpanStopper, PortChance, wg)
+						err = mod.MultiModMqProcessStop(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg)
 						status = false
 					}
 				} else {

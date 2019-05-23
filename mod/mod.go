@@ -1,6 +1,7 @@
 package mod
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -23,8 +24,12 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
+// type IdStruct struct {
+// 	Id int
+// }
+
 type IdStruct struct {
-	Id int
+	SerialDetailsId int
 }
 
 type PortStruct struct {
@@ -32,16 +37,33 @@ type PortStruct struct {
 	ComPort string
 }
 
-type ModSpawner struct {
-	ModRegs    []models.ModbusRegisters
-	Handler    *modbus.RTUClientHandler
-	ComChan    chan map[string]interface{}
-	PortChance chan int
+type IpPortStruct struct {
+	Id      int
+	Type    int
+	IpAdd   string
+	Port    int
+	ComPort string
 }
 
-func (mod *ModSpawner) init() {
+type RegsTcpStruct struct {
+	ModRegs    []models.ModbusRegisters
+	TcpHandler *modbus.TCPClientHandler
+	TcpClient  modbus.Client
+}
+
+type RegsSerPortStruct struct {
+	ModRegs       []models.ModbusRegisters
+	RtuHandler    *modbus.RTUClientHandler
+	RtuClient     modbus.Client
+	AsciiHandler  *modbus.ASCIIClientHandler
+	AsciiClient   modbus.Client
+	ComChan       chan map[string]interface{}
+	SerPortChance chan int
+}
+
+func (mod *RegsSerPortStruct) init() {
 	mod.ComChan = make(chan map[string]interface{}, 1)
-	mod.PortChance = make(chan int, 1)
+	mod.SerPortChance = make(chan int, 1)
 }
 
 type StatusLog struct {
@@ -82,12 +104,14 @@ func (f myF64) MarshalJSON() ([]byte, error) {
 var WsClients = make(map[*websocket.Conn]bool)
 var mu, processMu sync.Mutex
 
-func MultiModMqProcessStart(db *gorm.DB, status bool, wsClientsChan chan map[*websocket.Conn]bool) (bool, []*modbus.RTUClientHandler, mqtt.Client, map[int](chan int), map[string](chan int), *sync.WaitGroup, []error, error) {
+func MultiModMqProcessStart(db *gorm.DB, status bool, wsClientsChan chan map[*websocket.Conn]bool) (bool, []*modbus.RTUClientHandler, []*modbus.TCPClientHandler, mqtt.Client, map[int](chan int), map[string](chan int), *sync.WaitGroup, []error, []error, error) {
 	processMu.Lock()
 	defer processMu.Unlock()
 
-	var handlers []*modbus.RTUClientHandler
-	var retErrs []error
+	var RtuHandlers []*modbus.RTUClientHandler
+	var RtuErrs []error
+	var TcpHandlers []*modbus.TCPClientHandler
+	var TcpErrs []error
 	var wg sync.WaitGroup
 	var mqClient mqtt.Client
 	var err, mqErr error
@@ -97,44 +121,55 @@ func MultiModMqProcessStart(db *gorm.DB, status bool, wsClientsChan chan map[*we
 	// var status bool
 	// status = false
 
-	PortChance := make(map[string](chan int))
+	SerPortChance := make(map[string](chan int))
 
 	SpanStopper := make(map[int](chan int))
 
 	mqClient, mqErr = MqConnect(db)
+
 	if mqErr != nil {
 		// fmt.Println("Error in Mqtt Start ", mqErr)
-		go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Mqtt Start - %s", mqErr.Error(), time.Now()))
-		return status, handlers, mqClient, SpanStopper, PortChance, &wg, nil, mqErr
+		go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Mqtt Start - %s", time.Now(), mqErr.Error()))
+		return status, RtuHandlers, TcpHandlers, mqClient, SpanStopper, SerPortChance, &wg, nil, nil, mqErr
 	} else {
 		go WsStatusPub(WsClients, fmt.Sprintf("%v	Mqtt Connected", time.Now()))
-		handlers, retErrs = MultiModStart(db)
-		for i, err := range retErrs {
+		RtuHandlers, TcpHandlers, RtuErrs, TcpErrs = MultiModStart(db)
+		for i, err := range RtuErrs {
 			if err != nil {
-				// fmt.Println("Error in Modstart ", err)
-				go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Modstart - %s,  Serial Port - %s ", time.Now(), err.Error(), handlers[i].Address))
-				if i < cap(handlers) {
-					handlers[i].Close()
+				go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Modstart - %s,  Serial Port - %s ", time.Now(), err.Error(), RtuHandlers[i].Address))
+				if i < cap(RtuHandlers) {
+					RtuHandlers[i].Close()
 				}
 			} else {
 				count = count + 1
-				PortChance[handlers[i].Address] = make(chan int, 1)
+				SerPortChance[RtuHandlers[i].Address] = make(chan int, 1)
 			}
 		}
-		if count > 0 {
+
+		for i, err := range TcpErrs {
+			if err != nil {
+				go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Modstart - %s,  TCP Address Port - %s ", time.Now(), err.Error(), TcpHandlers[i].Address))
+				if i < cap(TcpHandlers) {
+					TcpHandlers[i].Close()
+				}
+			} else {
+				count = count + 1
+			}
+		}
+		if count == 2 {
 			Topics, err = GetAllTopics(db)
 			if err == nil {
 				if len(Topics) > 0 {
 					for _, topic := range Topics {
-						tempTopicReqPorts := GetTopicReqPorts(db, topic.Id)
-						if len(tempTopicReqPorts) > 0 {
-							wg.Add(1)
+						tempTopicReqIpsPorts := GetTopicReqIpsPorts(db, topic.Id)
+						if len(tempTopicReqIpsPorts) > 0 {
+							wg.Add(len(tempTopicReqIpsPorts))
 						}
 
 						SpanStopper[topic.Id] = make(chan int, 1)
 					}
 
-					go MultiModReadWrite(db, mqClient, Topics, handlers, SpanStopper, PortChance, &wg)
+					go MultiModReadWrite(db, mqClient, Topics, RtuHandlers, TcpHandlers, SpanStopper, SerPortChance, &wg)
 					status = true
 				} else {
 					// fmt.Println("There is no topics, Please add topics")
@@ -145,12 +180,12 @@ func MultiModMqProcessStart(db *gorm.DB, status bool, wsClientsChan chan map[*we
 				go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Fetching topics ", time.Now(), err.Error()))
 			}
 		}
-		return status, handlers, mqClient, SpanStopper, PortChance, &wg, retErrs, mqErr
+		return status, RtuHandlers, TcpHandlers, mqClient, SpanStopper, SerPortChance, &wg, RtuErrs, TcpErrs, mqErr
 	}
 
 }
 
-func MultiModMqProcessStop(handlers []*modbus.RTUClientHandler, mqClient mqtt.Client, SpanStopper map[int](chan int), PortChance map[string](chan int), wg *sync.WaitGroup) error {
+func MultiModMqProcessStop(RtuHandlers []*modbus.RTUClientHandler, TcpHandlers []*modbus.TCPClientHandler, mqClient mqtt.Client, SpanStopper map[int](chan int), SerPortChance map[string](chan int), wg *sync.WaitGroup) error {
 	processMu.Lock()
 	defer processMu.Unlock()
 
@@ -164,7 +199,7 @@ func MultiModMqProcessStop(handlers []*modbus.RTUClientHandler, mqClient mqtt.Cl
 		// fmt.Println("Stop Spanning topic - %s", k)
 	}
 
-	// for k, v := range PortChance {
+	// for k, v := range SerPortChance {
 	// 	v <- 0
 	// 	fmt.Println("Stoping the Port %s", k)
 
@@ -180,17 +215,21 @@ func MultiModMqProcessStop(handlers []*modbus.RTUClientHandler, mqClient mqtt.Cl
 			<-v
 		}
 	}
-	for _, v := range PortChance {
+	for _, v := range SerPortChance {
 		if len(v) == 0 {
 			v <- 0
 		}
 	}
-	for _, v := range PortChance {
+	for _, v := range SerPortChance {
 		if len(v) > 0 {
 			<-v
 		}
 	}
-	for _, handler := range handlers {
+	for _, handler := range RtuHandlers {
+		handler.Close()
+	}
+
+	for _, handler := range TcpHandlers {
 		handler.Close()
 	}
 
@@ -228,29 +267,53 @@ func GetAllTopics(db *gorm.DB) ([]models.Topics, error) {
 func GetReqPorts(db *gorm.DB) []int {
 	var temp []IdStruct
 	var id []int
-	if err := db.Raw(`select distinct SD.id FROM topics TT 
-					   INNER join regs_topics RT ON TT.id = RT.topics_id 
-					   INNER join modbus_registers MR ON MR.id = RT.modbus_registers_id 
-					   INNER Join regs_ports RP ON RP.modbus_registers_id = MR.id 
-					   inner join serial_details SD ON SD.id = RP.serial_details_id`).Scan(&temp).Error; err != nil {
+	// if err := db.Raw(`select distinct SD.id FROM topics TT
+	// 				   INNER join regs_topics RT ON TT.id = RT.topics_id
+	// 				   INNER join modbus_registers MR ON MR.id = RT.modbus_registers_id
+	// 				   INNER Join regs_ports RP ON RP.modbus_registers_id = MR.id
+	// 				   inner join serial_details SD ON SD.id = RP.serial_details_id`).Scan(&temp).Error; err != nil {
+	// }
+
+	if err := db.Raw(`select distinct RP.serial_details_id  FROM topics TT
+	left outer  join regs_topics RT ON TT.id = RT.topics_id
+	left outer  join modbus_registers MR ON MR.id = RT.modbus_registers_id
+	inner Join regs_ports RP ON RP.modbus_registers_id = MR.id `).Scan(&temp).Error; err != nil {
 	}
 	for _, st := range temp {
-		id = append(id, st.Id)
+		id = append(id, st.SerialDetailsId)
 	}
 	return id
 }
 
-func getHandlerFromHandlers(handlers []*modbus.RTUClientHandler, PortName string) *modbus.RTUClientHandler {
-	var Handler *modbus.RTUClientHandler
-	for _, handler := range handlers {
-		if PortName == handler.Address {
-			Handler = handler
-			break
+func getRtuHandlerFromRtuHandlers(RtuHandlers []*modbus.RTUClientHandler, SerPort string) (*modbus.RTUClientHandler, modbus.Client) {
+	for _, handler := range RtuHandlers {
+		if SerPort == handler.Address {
+			return handler, modbus.NewClient(handler)
 		}
 	}
-	return Handler
+	return nil, nil
 }
-func GetTopicPortReqModRegs(db *gorm.DB, TopId int, Port string) []models.ModbusRegisters {
+
+func getAsciiHandlerFromAsciiHandlers(AsciiHandlers []*modbus.ASCIIClientHandler, SerPort string) (*modbus.ASCIIClientHandler, modbus.Client) {
+	for _, handler := range AsciiHandlers {
+		if SerPort == handler.Address {
+			return handler, modbus.NewClient(handler)
+		}
+	}
+	return nil, nil
+}
+
+func getTcpHandlerFromTcpHandlers(TcpHandlers []*modbus.TCPClientHandler, IpAdd string, Port int) (*modbus.TCPClientHandler, modbus.Client) {
+	for _, handler := range TcpHandlers {
+		// fmt.Println("tcpHandler.Adress - ", handler.Address)
+		// fmt.Println("IpAdd+ \":\" + strconv.Itoa(Port)", IpAdd+":"+strconv.Itoa(Port))
+		if IpAdd+":"+strconv.Itoa(Port) == handler.Address {
+			return handler, modbus.NewClient(handler)
+		}
+	}
+	return nil, nil
+}
+func GetTopicSerPortReqModRegs(db *gorm.DB, TopId int, Port string) []models.ModbusRegisters {
 	var temp []models.ModbusRegisters
 	if err := db.Raw(`	select distinct MR.id, MR.name, MR.unit, MR.funct_code, MR.register, MR.qty, MR.data_type, 
 						MR.byte_order, MR.post_process, MR.tags FROM topics TT 
@@ -264,10 +327,41 @@ func GetTopicPortReqModRegs(db *gorm.DB, TopId int, Port string) []models.Modbus
 	return temp
 
 }
+func GetTopicTcpReqModRegs(db *gorm.DB, TopId int, IpAddPort string) []models.ModbusRegisters {
+	var temp []models.ModbusRegisters
+	IpAddPortSplitted := strings.Split(IpAddPort, ":")
+	if len(IpAddPortSplitted) > 0 {
 
+		if err := db.Raw(`	select distinct MR.id, MR.name, MR.unit, MR.funct_code, MR.register, MR.qty, MR.data_type, 
+						MR.byte_order, MR.post_process, MR.tags FROM topics TT 
+						INNER join regs_topics RT ON TT.id = RT.topics_id 
+						INNER join modbus_registers MR ON MR.id = RT.modbus_registers_id 
+						INNER Join regs_ports  RP ON RP.modbus_registers_id = MR.id
+						inner join serial_details SD ON SD.id = RP.serial_details_id
+						where TT.id = ? AND SD.ip_add = ? AND SD.port = ?`, TopId, IpAddPortSplitted[0], IpAddPortSplitted[1]).Scan(&temp).Error; err != nil {
+		}
+	}
+
+	return temp
+
+}
 func GetTopicReqPorts(db *gorm.DB, ReqId int) []PortStruct {
 	var temp []PortStruct
 	if err := db.Raw(`select distinct SD.id, SD.com_port FROM topics TT 
+					   INNER join regs_topics RT ON TT.id = RT.topics_id 
+					   INNER join modbus_registers MR ON MR.id = RT.modbus_registers_id 
+					   INNER Join regs_ports RP ON RP.modbus_registers_id = MR.id 
+					   inner join serial_details SD ON SD.id = RP.serial_details_id 
+					   where TT.id = ?`, ReqId).Scan(&temp).Error; err != nil {
+	}
+
+	return temp
+
+}
+
+func GetTopicReqIpsPorts(db *gorm.DB, ReqId int) []IpPortStruct {
+	var temp []IpPortStruct
+	if err := db.Raw(`select distinct SD.id, SD.type, SD.ip_add, SD.port, SD.com_port FROM topics TT 
 					   INNER join regs_topics RT ON TT.id = RT.topics_id 
 					   INNER join modbus_registers MR ON MR.id = RT.modbus_registers_id 
 					   INNER Join regs_ports RP ON RP.modbus_registers_id = MR.id 
@@ -327,27 +421,55 @@ func WsStatusPub(clients map[*websocket.Conn]bool, msg string) {
 	}
 }
 
-func MultiModStart(db *gorm.DB) ([]*modbus.RTUClientHandler, []error) {
+func MultiModStart(db *gorm.DB) ([]*modbus.RTUClientHandler, []*modbus.TCPClientHandler, []error, []error) {
 	var serialParams []models.SerialDetails
-	var handlers []*modbus.RTUClientHandler
+	var RtuHandlers []*modbus.RTUClientHandler
+	var RtuErrs []error
+	var TcpHandlers []*modbus.TCPClientHandler
+	var TcpErrs []error
+
 	var retErrs []error
+
 	if err := db.Where(GetReqPorts(db)).Find(&serialParams).Error; err != nil {
 		retErrs = append(retErrs, err)
-		return handlers, retErrs
+		return RtuHandlers, TcpHandlers, retErrs, retErrs
 	} else {
 		for _, serialParam := range serialParams {
-			handler := modbus.NewRTUClientHandler(serialParam.ComPort)
-			handler.BaudRate = serialParam.BaudRate
-			handler.DataBits = serialParam.DataBits
-			handler.Parity = serialParam.Parity
-			handler.StopBits = serialParam.StopBits
-			handler.Timeout = time.Duration(serialParam.Timeout) * time.Second
-			// handler.Logger = log.New(os.Stdout, "test: ", log.LstdFlags)
-			err := handler.Connect()
-			handlers = append(handlers, handler)
-			retErrs = append(retErrs, err)
+			if serialParam.Type == 1 {
+				handler := modbus.NewRTUClientHandler(serialParam.ComPort)
+				handler.BaudRate = serialParam.BaudRate
+				handler.DataBits = serialParam.DataBits
+				handler.Parity = serialParam.Parity
+				handler.StopBits = serialParam.StopBits
+				if serialParam.Timeout > 0 {
+					handler.Timeout = 1 * time.Second
+				} else {
+					handler.Timeout = time.Duration(serialParam.Timeout) * time.Second
+				}
+				// handler.Logger = log.New(os.Stdout, "test: ", log.LstdFlags)
+				err := handler.Connect()
+				RtuHandlers = append(RtuHandlers, handler)
+				RtuErrs = append(RtuErrs, err)
+			} else if serialParam.Type == 2 {
+				var b bytes.Buffer
+				b.WriteString(serialParam.IpAdd)
+				b.WriteString(":")
+				b.WriteString(strconv.Itoa(serialParam.Port))
+
+				handler := modbus.NewTCPClientHandler(b.String())
+				if serialParam.Timeout > 0 {
+					handler.Timeout = 1 * time.Second
+				} else {
+					handler.Timeout = time.Duration(serialParam.Timeout) * time.Second
+				}
+				err := handler.Connect()
+				TcpHandlers = append(TcpHandlers, handler)
+				TcpErrs = append(TcpErrs, err)
+				// handler.Logger = log.New(os.Stdout, "test: ", log.LstdFlags)
+			}
+
 		}
-		return handlers, retErrs
+		return RtuHandlers, TcpHandlers, RtuErrs, TcpErrs
 	}
 }
 
@@ -362,7 +484,7 @@ func ModReconn(handler *modbus.RTUClientHandler) (*modbus.RTUClientHandler, erro
 	}
 }
 
-func MultiModReadWrite(db *gorm.DB, mqClient mqtt.Client, Topics []models.Topics, handlers []*modbus.RTUClientHandler, SpanStopper map[int](chan int), PortChance map[string](chan int), wg *sync.WaitGroup) {
+func MultiModReadWrite(db *gorm.DB, mqClient mqtt.Client, Topics []models.Topics, RtuHandlers []*modbus.RTUClientHandler, TcpHandlers []*modbus.TCPClientHandler, SpanStopper map[int](chan int), SerPortChance map[string](chan int), wg *sync.WaitGroup) {
 	go WsStatusPub(WsClients, fmt.Sprintf("%v	No of Gorotuines - %d", time.Now(), runtime.NumGoroutine()))
 	// fmt.Println("Modbus RW Started")
 	go WsStatusPub(WsClients, fmt.Sprintf("%v	Modbus RW Started", time.Now()))
@@ -370,99 +492,58 @@ func MultiModReadWrite(db *gorm.DB, mqClient mqtt.Client, Topics []models.Topics
 	for _, topic := range Topics {
 		// go MqttOperation(mqClient, topic, payload, mqShutDown, wg2)
 		go WsStatusPub(WsClients, fmt.Sprintf("%v	Goroutine STARTED for Publishing Mqtt Topic - %s", time.Now(), topic.Topic))
-		go TopicModPort(db, mqClient, topic, handlers, SpanStopper[topic.Id], PortChance, wg)
+		go TopicModPort(db, mqClient, topic, RtuHandlers, TcpHandlers, SpanStopper[topic.Id], SerPortChance, wg)
 		go WsStatusPub(WsClients, fmt.Sprintf("%v	Goroutine STARTED for Reading Modbus Registers - %v which are related to Topic - %s", time.Now(), topic.ModRegs, topic.Topic))
 	}
 
-	for k, v := range PortChance {
+	for k, v := range SerPortChance {
 		v <- 100
 		go WsStatusPub(WsClients, fmt.Sprintf("%v	Send start cmd 100 to Port - %s", time.Now(), k))
 	}
 	return
 }
 
-func TopicModPort(db *gorm.DB, mqClient mqtt.Client, topic models.Topics, handlers []*modbus.RTUClientHandler, SpanStopperTopic chan int, PortChance map[string](chan int), wg *sync.WaitGroup) {
-	TopicReqPorts := GetTopicReqPorts(db, topic.Id)
-	var RegsPorts []ModSpawner
-	if len(TopicReqPorts) > 0 {
+func TopicModPort(db *gorm.DB, mqClient mqtt.Client, topic models.Topics, RtuHandlers []*modbus.RTUClientHandler, TcpHandlers []*modbus.TCPClientHandler, SpanStopperTopic chan int, SerPortChance map[string](chan int), wg *sync.WaitGroup) {
+	TopicReqIpsPorts := GetTopicReqIpsPorts(db, topic.Id)
+	var RegsSerPorts []RegsSerPortStruct
+	var RegsTcps []RegsTcpStruct
+	if len(TopicReqIpsPorts) > 0 {
 
-		for _, Port := range TopicReqPorts {
-			h := getHandlerFromHandlers(handlers, Port.ComPort)
-			RegsPort := ModSpawner{ModRegs: GetTopicPortReqModRegs(db, topic.Id, h.Address), Handler: h}
-			RegsPort.init()
-			RegsPort.PortChance = PortChance[h.Address]
-			RegsPorts = append(RegsPorts, RegsPort)
+		for _, IpPort := range TopicReqIpsPorts {
+			// fmt.Println("TopicsName - ", topic.Topic, " Tcp and Serial - ", IpPort)
+			if IpPort.Type == 1 {
+				h, c := getRtuHandlerFromRtuHandlers(RtuHandlers, IpPort.ComPort)
+				if h != nil && c != nil {
+					RegsSerPort := RegsSerPortStruct{ModRegs: GetTopicSerPortReqModRegs(db, topic.Id, h.Address), RtuHandler: h, RtuClient: c}
+					RegsSerPort.init()
+					RegsSerPort.SerPortChance = SerPortChance[h.Address]
+					RegsSerPorts = append(RegsSerPorts, RegsSerPort)
+				}
+			} else if IpPort.Type == 2 {
+				h, c := getTcpHandlerFromTcpHandlers(TcpHandlers, IpPort.IpAdd, IpPort.Port)
+				if h != nil && c != nil {
+					RegsTcp := RegsTcpStruct{ModRegs: GetTopicTcpReqModRegs(db, topic.Id, h.Address), TcpHandler: h, TcpClient: c}
+					RegsTcps = append(RegsTcps, RegsTcp)
+				}
+
+			}
+
 		}
 
 		if topic.Delay > 0 {
-
+			go MultiModSwaner(mqClient, topic, SpanStopperTopic, RegsSerPorts, RegsTcps, wg)
 		} else {
-			go MultiModSpawner3(mqClient, topic, SpanStopperTopic, RegsPorts, wg)
+			go MultiModRunner(mqClient, topic, SpanStopperTopic, RegsSerPorts, RegsTcps, wg)
 		}
 
-		go MultiModSpawner1(mqClient, topic, SpanStopperTopic, RegsPorts, wg)
 	}
+
+	wg.Done()
 
 	// return
 }
 
-// func MultiModSpwaner(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic chan int, RegsPorts []ModSpawner) {
-// 	var Pays []chan map[string]interface{}
-// 	for _, RegsPort := range RegsPorts {
-// 		Pays = append(Pays, RegsPort.ComChan)
-// 	}
-// 	for {
-// 		Payload := make(map[string]interface{})
-// 		_ = Payload
-// 		var wg sync.WaitGroup
-// 		wg.Add(len(RegsPorts))
-// 		for _, RegsPort := range RegsPorts {
-// 			go ModOperation(topic, RegsPort, &wg)
-// 		}
-// 		go MqttPublish(mqClient, topic, RegsPorts)
-// 		wg.Wait()
-// 		time.Sleep(time.Duration(topic.Delay) * time.Second)
-// 	}
-// }
-
-// func ModOperation(topic models.Topics, RegsPort ModSpawner, wg *sync.WaitGroup) {
-// 	client := modbus.NewClient(RegsPort.Handler)
-// 	tpay := make(map[string]interface{})
-// 	_ = tpay
-// 	lenOfModregs := cap(RegsPort.ModRegs)
-// 	_ = lenOfModregs
-// 	for _, modreg := range RegsPort.ModRegs {
-// 		time.Sleep(time.Duration(topic.Delay) * time.Second)
-// 		RegsPort.Handler.SlaveId = modreg.Unit
-// 		results, err := client.ReadHoldingRegisters(modreg.Register, modreg.Qty)
-// 		Processed := ModReadDataProcess(topic, &modreg, results, err)
-
-// 		if len(Processed) > 0 {
-
-// 			for k, v := range Processed {
-// 				tpay[k] = v
-// 			}
-
-// 		}
-// 	}
-// 	time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
-// 	RegsPort.ComChan <- tpay
-// 	wg.Done()
-// }
-
-// func MqttPublish(mqClient mqtt.Client, topic models.Topics, RegsPorts []ModSpawner) {
-// 	finalPay := make(map[string]interface{})
-// 	for _, RegsPort := range RegsPorts {
-// 		for k, v := range <-RegsPort.ComChan {
-// 			finalPay[k] = v
-// 		}
-// 	}
-// 	// fmt.Println("Pusblished data %v", finalPay)
-// 	// mqClient.Publish(topic.Topic, 0, false, payload)
-// 	// fmt.Sprintf("Topic - %s, Payload- %s", topic.Topic, payload)
-// 	// go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Payload- %s", topic.Topic, payload)})
-// }
-func MultiModSpawner1(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic chan int, RegsPorts []ModSpawner, wgMain *sync.WaitGroup) {
+func MultiModSwaner(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic chan int, RegsSerPorts []RegsSerPortStruct, RegsTcps []RegsTcpStruct, wgMain *sync.WaitGroup) {
 	for {
 		select {
 		case msg := <-SpanStopperTopic:
@@ -471,32 +552,25 @@ func MultiModSpawner1(mqClient mqtt.Client, topic models.Topics, SpanStopperTopi
 				wgMain.Done()
 				return
 			}
-		// default:
-		// 	// if Need to spawn topic after completetion each task then use below  WaitGroup
-		// 	// var WgModSpaw2 sync.WaitGroup
-		// 	// WgModSpaw2.Add(1)
-		// 	go MultiModSpawner2(mqClient, topic, SpanStopperTopic, RegsPorts) //, &WgModSpaw2)
-		// 	// WgModSpaw2.Wait()
-		// 	time.Sleep(time.Duration(topic.Delay) * time.Second)
 		case <-time.After(time.Duration(topic.Delay) * time.Second):
-			// if Need to spawn topic after completetion each task then use below  WaitGroup
-			// var WgModSpaw2 sync.WaitGroup
-			// WgModSpaw2.Add(1)
-			go MultiModSpawner2(mqClient, topic, SpanStopperTopic, RegsPorts) //, &WgModSpaw2)
-			// WgModSpaw2.Wait()
+			go MultiModTrigger(mqClient, topic, SpanStopperTopic, RegsSerPorts, RegsTcps) //, &WgModSpaw2)
 		}
 	}
 }
 
-func MultiModSpawner2(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic chan int, RegsPorts []ModSpawner) { //, wgMain *sync.WaitGroup) {
-	Payload := make(chan map[string]interface{}, len(RegsPorts))
+func MultiModTrigger(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic chan int, RegsSerPorts []RegsSerPortStruct, RegsTcps []RegsTcpStruct) { //, wgMain *sync.WaitGroup) {
+	Payload := make(chan map[string]interface{}, len(RegsSerPorts))
 	var ModWg sync.WaitGroup
 	var MqWg sync.WaitGroup
-	ModWg.Add(len(RegsPorts))
+	ModWg.Add(len(RegsSerPorts) + len(RegsTcps))
 	MqWg.Add(1)
-	for _, RegsPort := range RegsPorts {
-		RegsPort.ComChan = make(chan map[string]interface{})
-		go ModOperation2(topic, RegsPort, Payload, &ModWg)
+	for _, RegsSerPort := range RegsSerPorts {
+		RegsSerPort.ComChan = make(chan map[string]interface{})
+		go RegsSerPort.ModOperation2(topic, Payload, &ModWg)
+		// fmt.Println("Spanned")
+	}
+	for _, RegsTcp := range RegsTcps {
+		go RegsTcp.ModOperation2(topic, Payload, &ModWg)
 		// fmt.Println("Spanned")
 	}
 	go MqttPublish2(mqClient, topic, Payload, &MqWg)
@@ -507,7 +581,7 @@ func MultiModSpawner2(mqClient mqtt.Client, topic models.Topics, SpanStopperTopi
 	// wgMain.Done()
 }
 
-func MultiModSpawner3(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic chan int, RegsPorts []ModSpawner, wgMain *sync.WaitGroup) {
+func MultiModRunner(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic chan int, RegsSerPorts []RegsSerPortStruct, RegsTcps []RegsTcpStruct, wgMain *sync.WaitGroup) {
 	for {
 		select {
 		case msg := <-SpanStopperTopic:
@@ -518,49 +592,48 @@ func MultiModSpawner3(mqClient mqtt.Client, topic models.Topics, SpanStopperTopi
 				return
 			}
 		default:
-			Payload := make(chan map[string]interface{}, len(RegsPorts))
+			Payload := make(chan map[string]interface{}, len(RegsSerPorts))
 			var ModWg sync.WaitGroup
 
-			ModWg.Add(len(RegsPorts))
+			ModWg.Add(len(RegsSerPorts) + len(RegsTcps))
 
-			for _, RegsPort := range RegsPorts {
-				RegsPort.ComChan = make(chan map[string]interface{})
-				go ModOperation2(topic, RegsPort, Payload, &ModWg)
+			for _, RegsSerPort := range RegsSerPorts {
+				RegsSerPort.ComChan = make(chan map[string]interface{})
+				go RegsSerPort.ModOperation2(topic, Payload, &ModWg)
 				// fmt.Println("Spanned")
 			}
-
+			for _, RegsTcp := range RegsTcps {
+				go RegsTcp.ModOperation2(topic, Payload, &ModWg)
+				// fmt.Println("Spanned")
+			}
 			go MqttPublish3(mqClient, topic, Payload)
 			// fmt.Println("Waiting for wait group modbus reder in Spwaner")
 			ModWg.Wait()
 			close(Payload)
-
 		}
 	}
 }
 
-func ModOperation2(topic models.Topics, RegsPort ModSpawner, Payload chan map[string]interface{}, wg *sync.WaitGroup) {
+func (RegsSerPort *RegsSerPortStruct) ModOperation2(topic models.Topics, Payload chan map[string]interface{}, wg *sync.WaitGroup) {
 	select {
-	case msg := <-RegsPort.PortChance:
-		// fmt.Println("Got Msg - %d in port - %s of topic - %s", msg, RegsPort.Handler.Address, topic.Topic)
+	case msg := <-RegsSerPort.SerPortChance:
 		if msg == 100 {
-			client := modbus.NewClient(RegsPort.Handler)
 			tpay := make(map[string]interface{})
-			_ = tpay
-			lenOfModregs := cap(RegsPort.ModRegs)
+			lenOfModregs := cap(RegsSerPort.ModRegs)
 			_ = lenOfModregs
-			for _, modreg := range RegsPort.ModRegs {
-				RegsPort.Handler.SlaveId = modreg.Unit
+			for _, modreg := range RegsSerPort.ModRegs {
+				RegsSerPort.RtuHandler.SlaveId = modreg.Unit
 				results := []byte{}
 				err := errors.New("")
 				switch modreg.FunctCode {
 				case 1:
-					results, err = client.ReadCoils(modreg.Register, modreg.Qty)
+					results, err = RegsSerPort.RtuClient.ReadCoils(modreg.Register, modreg.Qty)
 				case 2:
-					results, err = client.ReadDiscreteInputs(modreg.Register, modreg.Qty)
+					results, err = RegsSerPort.RtuClient.ReadDiscreteInputs(modreg.Register, modreg.Qty)
 				case 3:
-					results, err = client.ReadHoldingRegisters(modreg.Register, modreg.Qty)
+					results, err = RegsSerPort.RtuClient.ReadHoldingRegisters(modreg.Register, modreg.Qty)
 				case 4:
-					results, err = client.ReadInputRegisters(modreg.Register, modreg.Qty)
+					results, err = RegsSerPort.RtuClient.ReadInputRegisters(modreg.Register, modreg.Qty)
 				case 90:
 					Idd, err := strconv.Atoi(modreg.PostProcess)
 					if err == nil {
@@ -579,7 +652,6 @@ func ModOperation2(topic models.Topics, RegsPort ModSpawner, Payload chan map[st
 					} else {
 						tpay["ts"] = time.Now().Round(0)
 					}
-
 				}
 				if modreg.FunctCode < 90 {
 					Processed := ModReadDataProcess(topic, &modreg, results, err)
@@ -589,21 +661,19 @@ func ModOperation2(topic models.Topics, RegsPort ModSpawner, Payload chan map[st
 						}
 					}
 				}
-
 			}
-
 			Payload <- tpay
 
-			if len(RegsPort.PortChance) == 0 {
-				RegsPort.PortChance <- 100
+			if len(RegsSerPort.SerPortChance) == 0 {
+				RegsSerPort.SerPortChance <- 100
 			}
 			wg.Done()
 
 			return
 		} else {
-			if len(RegsPort.PortChance) == 0 {
-				RegsPort.PortChance <- 0
-				go WsStatusPub(WsClients, fmt.Sprintf("%v	Stopping Mod Operation of the Topic Spawner  - %s, Port - %s", time.Now(), topic.Topic, RegsPort.Handler.Address))
+			if len(RegsSerPort.SerPortChance) == 0 {
+				RegsSerPort.SerPortChance <- 0
+				go WsStatusPub(WsClients, fmt.Sprintf("%v	Stopping Mod Operation of the Topic Spawner  - %s, Port - %s", time.Now(), topic.Topic, RegsSerPort.RtuHandler.Address))
 			}
 			wg.Done()
 			return
@@ -611,6 +681,56 @@ func ModOperation2(topic models.Topics, RegsPort ModSpawner, Payload chan map[st
 		}
 	}
 
+}
+
+func (RegsTcp *RegsTcpStruct) ModOperation2(topic models.Topics, Payload chan map[string]interface{}, wg *sync.WaitGroup) {
+	tpay := make(map[string]interface{})
+	lenOfModregs := cap(RegsTcp.ModRegs)
+	_ = lenOfModregs
+	for _, modreg := range RegsTcp.ModRegs {
+		RegsTcp.TcpHandler.SlaveId = modreg.Unit
+		results := []byte{}
+		err := errors.New("")
+		switch modreg.FunctCode {
+		case 1:
+			results, err = RegsTcp.TcpClient.ReadCoils(modreg.Register, modreg.Qty)
+		case 2:
+			results, err = RegsTcp.TcpClient.ReadDiscreteInputs(modreg.Register, modreg.Qty)
+		case 3:
+			results, err = RegsTcp.TcpClient.ReadHoldingRegisters(modreg.Register, modreg.Qty)
+		case 4:
+			results, err = RegsTcp.TcpClient.ReadInputRegisters(modreg.Register, modreg.Qty)
+		case 90:
+			Idd, err := strconv.Atoi(modreg.PostProcess)
+			if err == nil {
+				tpay["suid"] = Idd
+
+			} else {
+				tpay["suid"] = 99999
+			}
+		case 99:
+			tpay["ts"] = int32(time.Now().Unix())
+		case 98:
+			tpay["ts"] = time.Now().Round(0)
+		case 97:
+			if len(modreg.PostProcess) > 0 {
+				tpay["ts"] = time.Now().Format(modreg.PostProcess)
+			} else {
+				tpay["ts"] = time.Now().Round(0)
+			}
+		}
+		if modreg.FunctCode < 90 {
+			Processed := ModReadDataProcess(topic, &modreg, results, err)
+			if len(Processed) > 0 {
+				for k, v := range Processed {
+					tpay[k] = v
+				}
+			}
+		}
+	}
+	Payload <- tpay
+	wg.Done()
+	return
 }
 
 func MqttPublish2(mqClient mqtt.Client, topic models.Topics, Payload chan map[string]interface{}, wg *sync.WaitGroup) {
@@ -931,7 +1051,8 @@ func MqConnect(db *gorm.DB) (mqtt.Client, error) {
 		for !token.WaitTimeout(3 * time.Second) {
 		}
 		if err := token.Error(); err != nil {
-			log.Fatal(err)
+			return client, err
+			// go WsStatusPub(WsClients, fmt.Sprintf("Error in Mqtt Connection - %v", err))
 		}
 		return client, err
 	}

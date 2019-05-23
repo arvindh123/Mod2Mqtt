@@ -180,7 +180,7 @@ class NavLoggedIn extends React.Component {
 
           <ul class="nav navbar-nav">
           <li>
-              <Link to="/serial">Serial Port</Link>
+              <Link to="/serial">Interface</Link>
             </li>
             <li>
               <Link to="/modbus">Modbus</Link>
@@ -250,7 +250,7 @@ class NavLogIn extends React.Component {
 
           <ul class="nav navbar-nav">
           <li>
-              <Link to="/serial">Serial Port</Link>
+              <Link to="/serial">Interface</Link>
             </li>
             <li>
               <Link to="/modbus">Modbus</Link>
@@ -916,7 +916,7 @@ class Modbus extends React.Component {
         <tr> 
           <th>ID </th> <th>Name</th> <th>Unit</th> <th>Function Code</th>
           <th>Register</th> <th>Qty</th> <th>DataType</th> <th>Byte Order (Endian)</th>
-          <th>PostProcess</th><th>Tags</th> <th> Serial Ports </th>
+          <th>PostProcess</th><th>Tags</th> <th>Interface Name</th>
           {/* <th>Topic ID </th>  */}
           <th>Topic</th> 
           {/* <th>Qos</th> <th>Retain</th> */}
@@ -933,7 +933,7 @@ class Modbus extends React.Component {
           <td >{item.postprocess}</td>
           <td >{item.tags.split(",").map( (tag,i) => ( <tr key={i}> <td> {tag} </td></tr> ) )}</td>
           <td>{item.serialport.map((item, i) => (
-             <tr key={i}> <td >{item.comport}</td> </tr>)) }
+             <tr key={i}> <td >{item.name}</td> </tr>)) }
       
             </td>
           <td> {item.mqtopic.map((item, i) => (
@@ -1052,7 +1052,7 @@ class SMR extends React.Component {
         <div >
           <div class="row">
           <div className="col-md-6">
-          <label>Select the Serial Port </label> 
+          <label>Select the Interface </label> 
           <select class="form-control" value={this.state.selectedPort} onChange={this.handlePortChange}>
           {this.state.ports.map((item,idx) => (
             <option key= {idx} value={idx}>{ item.name}</option>
@@ -1064,12 +1064,12 @@ class SMR extends React.Component {
           </div>
           </div>
           <div className="col-md-6">
-            <h4>Add Modbus Register to Serial Ports </h4>
-            <FilteredMultiSelect buttonText= "Add to Serial Port" className='row' classNames ={{ button:"btn btn-primary", buttonActive:"btn btn-success", filter:"form-control", select:"form-control"}} onChange={this.handleSelectionChange} textProp="name"  valueProp="id" options={this.state.options} selectedOptions={this.state.selectedRegs} />
+            <h4>Add Modbus Register to Interface </h4>
+            <FilteredMultiSelect buttonText= "Add to Interface" className='row' classNames ={{ button:"btn btn-primary", buttonActive:"btn btn-success", filter:"form-control", select:"form-control"}} onChange={this.handleSelectionChange} textProp="name"  valueProp="id" options={this.state.options} selectedOptions={this.state.selectedRegs} />
             </div>
             <div className="col-md-6">
-            <h4>Remove Modbus Register from Serial Ports </h4>
-            <FilteredMultiSelect buttonText= "Remove from Serial Port" className='row' classNames ={{ button:"btn btn-primary", buttonActive:"btn btn-danger", filter:"form-control", select:"form-control"}} onChange={this.handleDeselect} textProp="name"  valueProp="id" options={this.state.selectedRegs}  />
+            <h4>Remove Modbus Register from Interface </h4>
+            <FilteredMultiSelect buttonText= "Remove from Interface" className='row' classNames ={{ button:"btn btn-primary", buttonActive:"btn btn-danger", filter:"form-control", select:"form-control"}} onChange={this.handleDeselect} textProp="name"  valueProp="id" options={this.state.selectedRegs}  />
             </div>       
         </div>
     )

@@ -22,12 +22,16 @@ type Topics struct {
 }
 type SerialDetails struct {
 	Id       int                `gorm:"UNIQUE;NOT NULL;PRIMARY_KEY" json:"id"`
-	ComPort  string             `gorm:"UNIQUE;NOT NULL" json:"comport"`
-	BaudRate int                `gorm:"NOT NULL" json:"baudrate"`
-	DataBits int                `gorm:"NOT NULL" json:"databits"`
-	Parity   string             `gorm:"NOT NULL;size:1" json:"parity"`
-	StopBits int                `gorm:"NOT NULL" json:"stopbits"`
-	Timeout  int                `gorm:"NOT NULL" json:"timeout"`
+	Name     string             `gorm:"NOT NULL" json:"name"`
+	Type     int                `gorm:"default:0" json:"type"`
+	IpAdd    string             `gorm:"default:''" json:"ipadd"`
+	Port     int                `gorm:"default:0" json:"port"`
+	ComPort  string             `gorm:"default:''" json:"comport"`
+	BaudRate int                `gorm:"default:0" json:"baudrate"`
+	DataBits int                `gorm:"default:0" json:"databits"`
+	Parity   string             `gorm:"default:''" gorm:"size:1" json:"parity"`
+	StopBits int                `gorm:"default:0" json:"stopbits"`
+	Timeout  int                `gorm:"default:0" json:"timeout"`
 	ModRegs  []*ModbusRegisters `gorm:"many2many:regs_ports;"  json:"modregs"`
 }
 
