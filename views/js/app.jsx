@@ -712,21 +712,20 @@ class Modbus extends React.Component {
 
 
   handleRemoveReg = (i) => {
-    PostGet.Get("api/v1/modbus/regs/"+i, "DELETE")
-           .then(response  => response.json())
-           .then(json => {
-                          if (json.msg[0].content === "Done") {
-                            // console.log(json.msg)
-                            // alert("user")
-                            this.getmodregs(); 
-                          } else {
-                            alert(json.msg[0].content)
-                            // console.log(json.msg)
-                            this.getmodregs(); 
-                          }
-                          });
-                        
-  }
+      PostGet.Get("api/v1/modbus/regs/"+i, "DELETE")
+      .then(response  => response.json())
+      .then(json => {
+          if (json.msg[0].content === "Done") {
+            // console.log(json.msg)
+            // alert("user")
+            this.getmodregs(); 
+          } else {
+            alert(json.msg[0].content)
+            // console.log(json.msg)
+            this.getmodregs(); 
+          }
+          });
+}
   getDataTypeName = (i) => {
     switch(i){
       case 1:

@@ -8,7 +8,10 @@ python3  /home/pi/codeV0.1.py > /dev/null 2>&1 &
 
 
 /home/pi/MultiPost/main > /home/pi/MultiPost/main.log 2>&1 &
+/home/pi/Golang/MultiRtuTcp/main > /home/pi/Golang/MultiRtuTcpmain.log 2>&1 &
 
 ./main > /home/pi/MultiPost/main.log 2>&1 &
 
+cd /home/pi/MultiRtuTcp
+./main > main.log 2>&1 &
  

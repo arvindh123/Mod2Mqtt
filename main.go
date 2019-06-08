@@ -11,10 +11,12 @@ import (
 	_ "net/http/pprof"
 	"strings"
 	"sync"
+	"time"
 
 	"./mod"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	// "github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/contrib/sessions"
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
@@ -136,6 +138,16 @@ type ModbusRegisters struct {
 	SerialPorts []*SerialDetails `gorm:"many2many:regs_ports;" json:"serialport"`
 }
 
+type AddonFeatures struct {
+	Id    int    `gorm:"UNIQUE;NOT NULL;PRIMARY_KEY;AUTO_INCREMENT" json:"id"`
+	Param string `gorm:"UNIQUE;NOT NULL" json:"param"`
+	Value string `gorm:"NOT NULL" json:"value"`
+	typ   string `gorm:"NOT NULL" json:"value"`
+}
+
+var status bool = false
+var autoStatus bool = true
+
 func main() {
 	// NOTE: See we’re using = to assign the global var
 	// instead of := which would assign it only in this function
@@ -149,7 +161,6 @@ func main() {
 	SpanStopper := make(map[int](chan int))
 	PortChance := make(map[string](chan int))
 	var err error
-	var status bool = false
 
 	webModMqChan := make(chan int)
 	_ = webModMqChan
@@ -165,6 +176,7 @@ func main() {
 	// go mod.ModMqProcess(db, webModMqChan, wsClientsChan)
 
 	r := gin.Default()
+	// pprof.Register(r)
 	r.Use(static.Serve("/", static.LocalFile("./views", true)))
 	Store := sessions.NewCookieStore([]byte("anosecret"))
 
@@ -224,8 +236,10 @@ func main() {
 		apiV1.DELETE("/serial/modregs/:id", DelPort2Regs)
 		apiV1.DELETE("/serial/modregs/:id/all", DelPort2RegsAll)
 	}
-	go handleMessages(status, RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, &wg, RtuErrs, TcpErrs, mqErr)
+	go handleMessages(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, &wg, RtuErrs, TcpErrs, mqErr)
+	go tryToStart(10)
 	r.Run(":5000")
+
 	// log.Println(http.ListenAndServe("localhost:6060", nil))
 
 }
@@ -252,10 +266,29 @@ func wshandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func handleMessages(status bool, RtuHandlers []*modbus.RTUClientHandler, TcpHandlers []*modbus.TCPClientHandler, mqClient mqtt.Client, SpanStopper map[int](chan int), PortChance map[string](chan int), wg *sync.WaitGroup, RtuErrs []error, TcpErrs []error, mqErr error) {
+// s	!s	a	r
+// 0	1	0	0
+// 1	0	1	0
+// 0	1	1	1
+// 1	0	0	0
+func tryToStart(delaysec int) {
+	for {
+		// fmt.Println(status,autoStatus)
+		if !status && autoStatus {
+			broadcast <- rdmsg{ty: 1, msg: []byte{123, 34, 67, 109, 100, 34, 58, 34, 49, 34, 125}}
+			time.Sleep(time.Duration(delaysec) * time.Second)
+		} else {
+			time.Sleep(time.Duration(delaysec) * time.Second)
+		}
+	}
+}
+
+func handleMessages(RtuHandlers []*modbus.RTUClientHandler, TcpHandlers []*modbus.TCPClientHandler, mqClient mqtt.Client, SpanStopper map[int](chan int), PortChance map[string](chan int), wg *sync.WaitGroup, RtuErrs []error, TcpErrs []error, mqErr error) {
 	var dat map[string]interface{}
 	for {
 		msg := <-broadcast
+		// fmt.Println("Msg  - ", msg)
+		// fmt.Println("Msg  - ", msg.msg)
 		// fmt.Println("Msg type - ", msg.ty)
 		// fmt.Println("Msg  - ", msg.msg)
 		if err := json.Unmarshal(msg.msg, &dat); err != nil {
@@ -266,6 +299,9 @@ func handleMessages(status bool, RtuHandlers []*modbus.RTUClientHandler, TcpHand
 					if v == "1" {
 						if !status {
 							status, RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg, RtuErrs, TcpErrs, mqErr = mod.MultiModMqProcessStart(db, status, wsClientsChan)
+							if status == true {
+								autoStatus = true
+							}
 						} else {
 							fmt.Println("Already Running")
 						}
@@ -273,6 +309,7 @@ func handleMessages(status bool, RtuHandlers []*modbus.RTUClientHandler, TcpHand
 							fmt.Println("Stoping due to MqErr")
 							mod.MultiModMqProcessStop(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg)
 							status = false
+							autoStatus = true
 						}
 
 						for _, modErr := range RtuErrs {
@@ -280,6 +317,7 @@ func handleMessages(status bool, RtuHandlers []*modbus.RTUClientHandler, TcpHand
 								fmt.Println("Stoping due to Modbus RTU Error")
 								mod.MultiModMqProcessStop(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg)
 								status = false
+								autoStatus = true
 							}
 						}
 
@@ -288,10 +326,15 @@ func handleMessages(status bool, RtuHandlers []*modbus.RTUClientHandler, TcpHand
 								fmt.Println("Stoping due to Modbus TCP Error")
 								mod.MultiModMqProcessStop(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg)
 								status = false
+								// autoStatus = false
 							}
 						}
 					} else if v == "2" {
-						err = mod.MultiModMqProcessStop(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg)
+						mod.MultiModMqProcessStop(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg)
+						status = false
+						autoStatus = false
+					} else if v == "3" {
+						mod.MultiModMqProcessStop(RtuHandlers, TcpHandlers, mqClient, SpanStopper, PortChance, wg)
 						status = false
 					}
 				} else {

@@ -36,7 +36,7 @@ func main() {
 	if mqErr == nil {
 		for i := 0; i < 5; i++ {
 			wg.Add(1)
-			go PublishCon(mqClient, fmt.Sprintf("Goro-%d",i), pay, wg)
+			go PublishCon(mqClient, fmt.Sprintf("Goro-%d", i), pay, wg)
 		}
 
 	}
@@ -60,19 +60,34 @@ func MqConnect() (mqtt.Client, error) {
 	return c, er
 }
 
+func connLostHandler(c mqtt.Client, err error) {
+	fmt.Printf("Connection lost, reason: %v\n", err)
+
+	//Perform additional action...
+}
+
+func onConnectHandler(c mqtt.Client) {
+	fmt.Printf("Connected to the MQTT Server")
+
+	//Perform additional action...
+}
 func CreateMqClientOptions(clientid string, server string, username string, password string, keepalive int) *mqtt.ClientOptions {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(server)
 	opts.SetUsername(username)
 	opts.SetPassword(password)
 	opts.SetClientID(clientid)
-	opts.SetKeepAlive(2 * time.Second)
+	opts.SetConnectTimeout(time.Duration(1) * time.Second)
+	opts.SetKeepAlive(time.Duration(60) * time.Second)
+	opts.SetAutoReconnect(true)
+	opts.SetConnectionLostHandler(connLostHandler)
+	opts.SetOnConnectHandler(onConnectHandler)
+	opts.SetMaxReconnectInterval(time.Duration(1) * time.Second)
 	return opts
-
 }
 
 func PublishCon(mqClient mqtt.Client, name string, pay []map[string]interface{}, wg sync.WaitGroup) {
-	for i := 0; i < 100; i++ {
+	for {
 		final, err := json.Marshal(pay)
 
 		fmt.Println(final, err)

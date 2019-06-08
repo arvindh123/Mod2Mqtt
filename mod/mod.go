@@ -37,6 +37,11 @@ type PortStruct struct {
 	ComPort string
 }
 
+type wsMsg struct {
+	ty  int
+	msg []byte
+}
+
 type IpPortStruct struct {
 	Id      int
 	Type    int
@@ -104,6 +109,17 @@ func (f myF64) MarshalJSON() ([]byte, error) {
 var WsClients = make(map[*websocket.Conn]bool)
 var mu, processMu sync.Mutex
 
+var mqttStatus bool = false
+
+func connLostHandler(c mqtt.Client, err error) {
+	go WsStatusPub(WsClients, fmt.Sprintf("MQTT Server Connection lost, reason: %v\n", err))
+	mqttStatus = false
+}
+
+func onConnectHandler(c mqtt.Client) {
+	go WsStatusPub(WsClients, "MQTT Server Connected")
+	mqttStatus = true
+}
 func MultiModMqProcessStart(db *gorm.DB, status bool, wsClientsChan chan map[*websocket.Conn]bool) (bool, []*modbus.RTUClientHandler, []*modbus.TCPClientHandler, mqtt.Client, map[int](chan int), map[string](chan int), *sync.WaitGroup, []error, []error, error) {
 	processMu.Lock()
 	defer processMu.Unlock()
@@ -134,42 +150,56 @@ func MultiModMqProcessStart(db *gorm.DB, status bool, wsClientsChan chan map[*we
 	} else {
 		go WsStatusPub(WsClients, fmt.Sprintf("%v	Mqtt Connected", time.Now()))
 		RtuHandlers, TcpHandlers, RtuErrs, TcpErrs = MultiModStart(db)
-		for i, err := range RtuErrs {
-			if err != nil {
-				go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Modstart - %s,  Serial Port - %s ", time.Now(), err.Error(), RtuHandlers[i].Address))
-				if i < cap(RtuHandlers) {
-					RtuHandlers[i].Close()
+		// fmt.Println(len(RtuHandlers), TcpHandlers, RtuErrs, TcpErrs)
+
+		if RtuHandlers != nil {
+			for i, err := range RtuErrs {
+				if err != nil {
+					go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Modstart - %s,  Serial Port - %s ", time.Now(), err.Error(), RtuHandlers[i].Address))
+					if i < cap(RtuHandlers) {
+						RtuHandlers[i].Close()
+					}
+				} else {
+					count = count + 1
+					SerPortChance[RtuHandlers[i].Address] = make(chan int, 1)
 				}
-			} else {
-				count = count + 1
-				SerPortChance[RtuHandlers[i].Address] = make(chan int, 1)
 			}
+		} else {
+			count = count + 1
+		}
+		if TcpErrs != nil {
+			for i, err := range TcpErrs {
+				if err != nil {
+					go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Modstart - %s,  TCP Address Port - %s ", time.Now(), err.Error(), TcpHandlers[i].Address))
+					if i < cap(TcpHandlers) {
+						TcpHandlers[i].Close()
+					}
+				} else {
+					count = count + 1
+				}
+			}
+		} else {
+			count = count + 1
 		}
 
-		for i, err := range TcpErrs {
-			if err != nil {
-				go WsStatusPub(WsClients, fmt.Sprintf("%v	Error in Modstart - %s,  TCP Address Port - %s ", time.Now(), err.Error(), TcpHandlers[i].Address))
-				if i < cap(TcpHandlers) {
-					TcpHandlers[i].Close()
-				}
-			} else {
-				count = count + 1
-			}
-		}
-		if count == 2 {
+		// fmt.Println(count)
+		if count >= 2 {
 			Topics, err = GetAllTopics(db)
 			if err == nil {
 				if len(Topics) > 0 {
 					for _, topic := range Topics {
 						tempTopicReqIpsPorts := GetTopicReqIpsPorts(db, topic.Id)
+						// fmt.Println("leng of tempTopicRegTpsPorts", len(tempTopicReqIpsPorts))
 						if len(tempTopicReqIpsPorts) > 0 {
-							wg.Add(len(tempTopicReqIpsPorts))
+							// wg.Add(len(tempTopicReqIpsPorts))
+							wg.Add(1)
 						}
 
 						SpanStopper[topic.Id] = make(chan int, 1)
 					}
-
+					// fmt.Printf("At Before  - %+v", wg)
 					go MultiModReadWrite(db, mqClient, Topics, RtuHandlers, TcpHandlers, SpanStopper, SerPortChance, &wg)
+					// fmt.Println("At after  - ", wg)
 					status = true
 				} else {
 					// fmt.Println("There is no topics, Please add topics")
@@ -233,7 +263,9 @@ func MultiModMqProcessStop(RtuHandlers []*modbus.RTUClientHandler, TcpHandlers [
 		handler.Close()
 	}
 
-	mqClient.Disconnect(250)
+	if mqClient != nil {
+		mqClient.Disconnect(250)
+	}
 
 	go WsStatusPub(WsClients, fmt.Sprintf("%v	Topic Spawner and Modbus Ports Closed", time.Now()))
 	// fmt.Println("Topic Spawner and Modbus Ports Closed")
@@ -488,7 +520,6 @@ func MultiModReadWrite(db *gorm.DB, mqClient mqtt.Client, Topics []models.Topics
 	go WsStatusPub(WsClients, fmt.Sprintf("%v	No of Gorotuines - %d", time.Now(), runtime.NumGoroutine()))
 	// fmt.Println("Modbus RW Started")
 	go WsStatusPub(WsClients, fmt.Sprintf("%v	Modbus RW Started", time.Now()))
-
 	for _, topic := range Topics {
 		// go MqttOperation(mqClient, topic, payload, mqShutDown, wg2)
 		go WsStatusPub(WsClients, fmt.Sprintf("%v	Goroutine STARTED for Publishing Mqtt Topic - %s", time.Now(), topic.Topic))
@@ -504,6 +535,7 @@ func MultiModReadWrite(db *gorm.DB, mqClient mqtt.Client, Topics []models.Topics
 }
 
 func TopicModPort(db *gorm.DB, mqClient mqtt.Client, topic models.Topics, RtuHandlers []*modbus.RTUClientHandler, TcpHandlers []*modbus.TCPClientHandler, SpanStopperTopic chan int, SerPortChance map[string](chan int), wg *sync.WaitGroup) {
+	// fmt.Println("Att TopicModport - ", wg)
 	TopicReqIpsPorts := GetTopicReqIpsPorts(db, topic.Id)
 	var RegsSerPorts []RegsSerPortStruct
 	var RegsTcps []RegsTcpStruct
@@ -531,14 +563,18 @@ func TopicModPort(db *gorm.DB, mqClient mqtt.Client, topic models.Topics, RtuHan
 		}
 
 		if topic.Delay > 0 {
+			// fmt.Println("Att topic.Delay > 0 - ", wg)
+			// go WsStatusPub(WsClients, fmt.Sprintf("%v	Goroutine STARTED for Publishing Mqtt Topic - %s", time.Now(), topic.Topic))
+			// go WsStatusPub(WsClients, fmt.Sprintf("%v	Goroutine STARTED for Reading Modbus Registers without delay - %v which are related to Topic - %s", time.Now(), topic.ModRegs, topic.Topic))
 			go MultiModSwaner(mqClient, topic, SpanStopperTopic, RegsSerPorts, RegsTcps, wg)
 		} else {
+			// fmt.Println("Att topic.Delay > 0 else - ", wg)
+			// go WsStatusPub(WsClients, fmt.Sprintf("%v	Goroutine STARTED for Publishing Mqtt Topic - %s", time.Now(), topic.Topic))
+			// go WsStatusPub(WsClients, fmt.Sprintf("%v	Goroutine STARTED for Reading Modbus Registers with delay - %v which are related to Topic - %s", time.Now(), topic.ModRegs, topic.Topic))
 			go MultiModRunner(mqClient, topic, SpanStopperTopic, RegsSerPorts, RegsTcps, wg)
 		}
 
 	}
-
-	wg.Done()
 
 	// return
 }
@@ -548,68 +584,94 @@ func MultiModSwaner(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic 
 		select {
 		case msg := <-SpanStopperTopic:
 			if msg == 100 {
-				go WsStatusPub(WsClients, fmt.Sprintf("%v	Stopping the Topic spawner1 - %s", time.Now(), topic.Topic))
+				go WsStatusPub(WsClients, fmt.Sprintf("%v	Stopping the Topic spawner - %s", time.Now(), topic.Topic))
+				// fmt.Printf("%v	Stopping the Topic spawner - %s", time.Now(), topic.Topic)
+				// fmt.Printf("MultiModSwaner -  %+v", wgMain)
 				wgMain.Done()
 				return
 			}
 		case <-time.After(time.Duration(topic.Delay) * time.Second):
-			go MultiModTrigger(mqClient, topic, SpanStopperTopic, RegsSerPorts, RegsTcps) //, &WgModSpaw2)
+			if mqttStatus == true {
+				go MultiModTrigger(mqClient, topic, SpanStopperTopic, RegsSerPorts, RegsTcps) //, &WgModSpaw2)
+			}
+
 		}
 	}
 }
 
 func MultiModTrigger(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic chan int, RegsSerPorts []RegsSerPortStruct, RegsTcps []RegsTcpStruct) { //, wgMain *sync.WaitGroup) {
-	Payload := make(chan map[string]interface{}, len(RegsSerPorts))
-	var ModWg sync.WaitGroup
-	var MqWg sync.WaitGroup
-	ModWg.Add(len(RegsSerPorts) + len(RegsTcps))
-	MqWg.Add(1)
-	for _, RegsSerPort := range RegsSerPorts {
-		RegsSerPort.ComChan = make(chan map[string]interface{})
-		go RegsSerPort.ModOperation2(topic, Payload, &ModWg)
-		// fmt.Println("Spanned")
-	}
-	for _, RegsTcp := range RegsTcps {
-		go RegsTcp.ModOperation2(topic, Payload, &ModWg)
-		// fmt.Println("Spanned")
-	}
-	go MqttPublish2(mqClient, topic, Payload, &MqWg)
-	// fmt.Println("Waiting for wait group modbus reder in Spwaner")
-	ModWg.Wait()
-	close(Payload)
-	MqWg.Wait()
-	// wgMain.Done()
-}
+	if mqttStatus == true {
+		Payload := make(chan map[string]interface{}, len(RegsSerPorts))
+		var ModWg sync.WaitGroup
+		var MqWg sync.WaitGroup
+		ModWg.Add(len(RegsSerPorts) + len(RegsTcps))
+		MqWg.Add(1)
 
-func MultiModRunner(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic chan int, RegsSerPorts []RegsSerPortStruct, RegsTcps []RegsTcpStruct, wgMain *sync.WaitGroup) {
-	for {
-		select {
-		case msg := <-SpanStopperTopic:
-			if msg == 100 {
-				go WsStatusPub(WsClients, fmt.Sprintf("%v	Stopping the Topic spawner	3 - %s", time.Now(), topic.Topic))
-				// close(Payload)
-				wgMain.Done()
-				return
-			}
-		default:
-			Payload := make(chan map[string]interface{}, len(RegsSerPorts))
-			var ModWg sync.WaitGroup
-
-			ModWg.Add(len(RegsSerPorts) + len(RegsTcps))
-
+		if len(RegsSerPorts) > 0 {
 			for _, RegsSerPort := range RegsSerPorts {
 				RegsSerPort.ComChan = make(chan map[string]interface{})
 				go RegsSerPort.ModOperation2(topic, Payload, &ModWg)
 				// fmt.Println("Spanned")
 			}
+		}
+
+		if len(RegsTcps) > 0 {
 			for _, RegsTcp := range RegsTcps {
 				go RegsTcp.ModOperation2(topic, Payload, &ModWg)
 				// fmt.Println("Spanned")
 			}
-			go MqttPublish3(mqClient, topic, Payload)
-			// fmt.Println("Waiting for wait group modbus reder in Spwaner")
-			ModWg.Wait()
-			close(Payload)
+		}
+
+		go MqttPublish2(mqClient, topic, Payload, &MqWg)
+		// fmt.Println("Waiting for wait group modbus reder in Spwaner")
+		ModWg.Wait()
+		close(Payload)
+		MqWg.Wait()
+		// wgMain.Done()
+
+	}
+}
+func MultiModRunner(mqClient mqtt.Client, topic models.Topics, SpanStopperTopic chan int, RegsSerPorts []RegsSerPortStruct, RegsTcps []RegsTcpStruct, wgMain *sync.WaitGroup) {
+	for {
+		select {
+		case msg := <-SpanStopperTopic:
+			if msg == 100 {
+				go WsStatusPub(WsClients, fmt.Sprintf("%v	Stopping the Topic Runner	- %s", time.Now(), topic.Topic))
+				// close(Payload)
+				// fmt.Printf("%v	Stopping the Topic Runner - %s", time.Now(), topic.Topic)
+
+				wgMain.Done()
+				return
+			}
+		default:
+			if mqttStatus == true {
+				Payload := make(chan map[string]interface{}, len(RegsSerPorts))
+				var ModWg sync.WaitGroup
+
+				ModWg.Add(len(RegsSerPorts) + len(RegsTcps))
+
+				if len(RegsSerPorts) > 0 {
+					for _, RegsSerPort := range RegsSerPorts {
+						RegsSerPort.ComChan = make(chan map[string]interface{})
+						go RegsSerPort.ModOperation2(topic, Payload, &ModWg)
+						// fmt.Println("Spanned")
+					}
+				}
+
+				if len(RegsTcps) > 0 {
+					for _, RegsTcp := range RegsTcps {
+						go RegsTcp.ModOperation2(topic, Payload, &ModWg)
+						// fmt.Println("Spanned")
+					}
+				}
+
+				go MqttPublish3(mqClient, topic, Payload)
+				// fmt.Println("Waiting for wait group modbus reder in Spwaner")
+				ModWg.Wait()
+				close(Payload)
+			} else {
+				time.Sleep(time.Duration(2) * time.Second)
+			}
 		}
 	}
 }
@@ -623,17 +685,41 @@ func (RegsSerPort *RegsSerPortStruct) ModOperation2(topic models.Topics, Payload
 			_ = lenOfModregs
 			for _, modreg := range RegsSerPort.ModRegs {
 				RegsSerPort.RtuHandler.SlaveId = modreg.Unit
-				results := []byte{}
-				err := errors.New("")
+				// results := []byte{}
+				// err := errors.New("")
 				switch modreg.FunctCode {
 				case 1:
-					results, err = RegsSerPort.RtuClient.ReadCoils(modreg.Register, modreg.Qty)
+					results, err := RegsSerPort.RtuClient.ReadCoils(modreg.Register, modreg.Qty)
+					Processed := ModReadDataProcess(topic, &modreg, results, err)
+					if len(Processed) > 0 {
+						for k, v := range Processed {
+							tpay[k] = v
+						}
+					}
 				case 2:
-					results, err = RegsSerPort.RtuClient.ReadDiscreteInputs(modreg.Register, modreg.Qty)
+					results, err := RegsSerPort.RtuClient.ReadDiscreteInputs(modreg.Register, modreg.Qty)
+					Processed := ModReadDataProcess(topic, &modreg, results, err)
+					if len(Processed) > 0 {
+						for k, v := range Processed {
+							tpay[k] = v
+						}
+					}
 				case 3:
-					results, err = RegsSerPort.RtuClient.ReadHoldingRegisters(modreg.Register, modreg.Qty)
+					results, err := RegsSerPort.RtuClient.ReadHoldingRegisters(modreg.Register, modreg.Qty)
+					Processed := ModReadDataProcess(topic, &modreg, results, err)
+					if len(Processed) > 0 {
+						for k, v := range Processed {
+							tpay[k] = v
+						}
+					}
 				case 4:
-					results, err = RegsSerPort.RtuClient.ReadInputRegisters(modreg.Register, modreg.Qty)
+					results, err := RegsSerPort.RtuClient.ReadInputRegisters(modreg.Register, modreg.Qty)
+					Processed := ModReadDataProcess(topic, &modreg, results, err)
+					if len(Processed) > 0 {
+						for k, v := range Processed {
+							tpay[k] = v
+						}
+					}
 				case 90:
 					Idd, err := strconv.Atoi(modreg.PostProcess)
 					if err == nil {
@@ -653,17 +739,10 @@ func (RegsSerPort *RegsSerPortStruct) ModOperation2(topic models.Topics, Payload
 						tpay["ts"] = time.Now().Round(0)
 					}
 				}
-				if modreg.FunctCode < 90 {
-					Processed := ModReadDataProcess(topic, &modreg, results, err)
-					if len(Processed) > 0 {
-						for k, v := range Processed {
-							tpay[k] = v
-						}
-					}
-				}
 			}
-			Payload <- tpay
-
+			if mqttStatus == true {
+				Payload <- tpay
+			}
 			if len(RegsSerPort.SerPortChance) == 0 {
 				RegsSerPort.SerPortChance <- 100
 			}
@@ -689,17 +768,41 @@ func (RegsTcp *RegsTcpStruct) ModOperation2(topic models.Topics, Payload chan ma
 	_ = lenOfModregs
 	for _, modreg := range RegsTcp.ModRegs {
 		RegsTcp.TcpHandler.SlaveId = modreg.Unit
-		results := []byte{}
-		err := errors.New("")
+		// results := []byte{}
+		// err := errors.New("")
 		switch modreg.FunctCode {
 		case 1:
-			results, err = RegsTcp.TcpClient.ReadCoils(modreg.Register, modreg.Qty)
+			results, err := RegsTcp.TcpClient.ReadCoils(modreg.Register, modreg.Qty)
+			Processed := ModReadDataProcess(topic, &modreg, results, err)
+			if len(Processed) > 0 {
+				for k, v := range Processed {
+					tpay[k] = v
+				}
+			}
 		case 2:
-			results, err = RegsTcp.TcpClient.ReadDiscreteInputs(modreg.Register, modreg.Qty)
+			results, err := RegsTcp.TcpClient.ReadDiscreteInputs(modreg.Register, modreg.Qty)
+			Processed := ModReadDataProcess(topic, &modreg, results, err)
+			if len(Processed) > 0 {
+				for k, v := range Processed {
+					tpay[k] = v
+				}
+			}
 		case 3:
-			results, err = RegsTcp.TcpClient.ReadHoldingRegisters(modreg.Register, modreg.Qty)
+			results, err := RegsTcp.TcpClient.ReadHoldingRegisters(modreg.Register, modreg.Qty)
+			Processed := ModReadDataProcess(topic, &modreg, results, err)
+			if len(Processed) > 0 {
+				for k, v := range Processed {
+					tpay[k] = v
+				}
+			}
 		case 4:
-			results, err = RegsTcp.TcpClient.ReadInputRegisters(modreg.Register, modreg.Qty)
+			results, err := RegsTcp.TcpClient.ReadInputRegisters(modreg.Register, modreg.Qty)
+			Processed := ModReadDataProcess(topic, &modreg, results, err)
+			if len(Processed) > 0 {
+				for k, v := range Processed {
+					tpay[k] = v
+				}
+			}
 		case 90:
 			Idd, err := strconv.Atoi(modreg.PostProcess)
 			if err == nil {
@@ -719,36 +822,35 @@ func (RegsTcp *RegsTcpStruct) ModOperation2(topic models.Topics, Payload chan ma
 				tpay["ts"] = time.Now().Round(0)
 			}
 		}
-		if modreg.FunctCode < 90 {
-			Processed := ModReadDataProcess(topic, &modreg, results, err)
-			if len(Processed) > 0 {
-				for k, v := range Processed {
-					tpay[k] = v
-				}
-			}
-		}
 	}
-	Payload <- tpay
+	if mqttStatus == true {
+		Payload <- tpay
+	}
 	wg.Done()
 	return
 }
 
 func MqttPublish2(mqClient mqtt.Client, topic models.Topics, Payload chan map[string]interface{}, wg *sync.WaitGroup) {
-	finalPay := make(map[string]interface{})
-	// fmt.Println("Starting <- Pays")
-	for vs := range Payload {
-		// fmt.Println("for each payload - ", vs)
-		for k, v := range vs {
-			finalPay[k] = v
+	if mqttStatus == true {
+		finalPay := make(map[string]interface{})
+		// fmt.Println("Starting <- Pays")
+		for vs := range Payload {
+			// fmt.Println("for each payload - ", vs)
+			for k, v := range vs {
+				finalPay[k] = v
+			}
 		}
-	}
-	final, err := json.Marshal(finalPay)
-	// fmt.Println("Pusblished data %v", finalPay)
-	if err == nil {
-		mqClient.Publish(topic.Topic, 0, false, final)
-		go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Payload- %v", topic.Topic, finalPay)})
-	} else {
-		go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Before Marshal Payload- %v, Error in Marshal -> Err- %v", topic.Topic, finalPay, err)})
+		final, err := json.Marshal(finalPay)
+		// fmt.Println("Pusblished data %v", finalPay)
+		if err == nil {
+			mqClient.Publish(topic.Topic, 0, false, final)
+			go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Payload- %v", topic.Topic, finalPay)})
+		} else {
+			go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Before Marshal Payload- %v, Error in Marshal -> Err- %v", topic.Topic, finalPay, err)})
+		}
+	} else if mqttStatus == false {
+
+		go WsClientPub(MqLastSent{fmt.Sprintf("MQTT Server Connection Lost ")})
 	}
 
 	wg.Done()
@@ -757,21 +859,25 @@ func MqttPublish2(mqClient mqtt.Client, topic models.Topics, Payload chan map[st
 }
 
 func MqttPublish3(mqClient mqtt.Client, topic models.Topics, Payload chan map[string]interface{}) { //, wg *sync.WaitGroup) {
-	finalPay := make(map[string]interface{})
-	// fmt.Println("Starting <- Pays")
-	for vs := range Payload {
-		// fmt.Println("for each payload - ", vs)
-		for k, v := range vs {
-			finalPay[k] = v
+	if mqttStatus == true {
+		finalPay := make(map[string]interface{})
+		// fmt.Println("Starting <- Pays")
+		for vs := range Payload {
+			// fmt.Println("for each payload - ", vs)
+			for k, v := range vs {
+				finalPay[k] = v
+			}
 		}
-	}
-	final, err := json.Marshal(finalPay)
-	// fmt.Println("Pusblished data %v", finalPay)
-	if err == nil {
-		mqClient.Publish(topic.Topic, 0, false, final)
-		go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Payload- %v", topic.Topic, finalPay)})
-	} else {
-		go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Before Marshal Payload- %v, Error in Marshal -> Err- %v", topic.Topic, finalPay, err)})
+		final, err := json.Marshal(finalPay)
+		// fmt.Println("Pusblished data %v", finalPay)
+		if err == nil {
+			mqClient.Publish(topic.Topic, 0, false, final)
+			go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Payload- %v", topic.Topic, finalPay)})
+		} else {
+			go WsClientPub(MqLastSent{fmt.Sprintf("Topic - %s, Before Marshal Payload- %v, Error in Marshal -> Err- %v", topic.Topic, finalPay, err)})
+		}
+	} else if mqttStatus == false {
+		go WsClientPub(MqLastSent{fmt.Sprintf("MQTT Server Connection Lost ")})
 	}
 
 	// wg.Done()
@@ -1046,6 +1152,7 @@ func MqConnect(db *gorm.DB) (mqtt.Client, error) {
 		password := mqParams.Password
 		keepalive := 60
 		opts := CreateMqClientOptions(clientid, server, username, password, keepalive)
+
 		client := mqtt.NewClient(opts)
 		token := client.Connect()
 		for !token.WaitTimeout(3 * time.Second) {
@@ -1064,8 +1171,12 @@ func CreateMqClientOptions(clientid string, server string, username string, pass
 	opts.SetUsername(username)
 	opts.SetPassword(password)
 	opts.SetClientID(clientid)
-	// opts.SetConnectTimeout(time.Duration(5))
-	// opts.SetKeepAlive(time.Duration(60))
+	opts.SetConnectTimeout(time.Duration(100) * time.Second)
+	opts.SetKeepAlive(time.Duration(60) * time.Second)
+	opts.SetAutoReconnect(true)
+	opts.SetConnectionLostHandler(connLostHandler)
+	opts.SetOnConnectHandler(onConnectHandler)
+	opts.SetMaxReconnectInterval(time.Duration(100) * time.Second)
 	return opts
 }
 
