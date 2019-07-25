@@ -1,0 +1,16 @@
+[Unit]
+Description=Modbus to MQTT Gateway service
+After=network.target
+
+[Service]
+
+WorkingDirectory=/home/pi/MultiRtuTcp
+ExecStartPre=-sudo date -s "$(curl http://10.87.1.54/Mobility/TimerService.asmx/GetCurrentTime)" 
+ExecStart= /home/pi/MultiRtuTcp/main > /home/pi/MultiRtuTcp/main.run
+StandardOutput=file:/home/pi/MultiRtuTcp/main.log
+StandardError=append:/home/pi/MultiRtuTcp/main.err
+Restart=on-failure
+User=pi
+
+[Install]
+WantedBy=multi-user.target
