@@ -1,0 +1,23 @@
+{"modlastaquired":"Device- EMS/EC-48593/Location2_Meter4, Reg Name- PM5500_1, Register - 0, Value [0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000], err- \u003cnil\u003e "}
+
+{"mqlastsent":"Topic - EMS/EC-48593/Location2_Meter4, Payload- map[L2N_Avg_Voltage:0 sts:2019-08-09 19:38:22.453 ets:2019-08-09 19:38:22.659 Frequency:0 Apparent_Power_Avg:0 Active_Power_Avg:0 L2L_Avg_Voltage:0 Avg_Current:0 Reactive_Power_Avg:0 Avg_PF:0 duid:10007]"}
+{"modlastaquired":"Device- EMS/EC-48593/Location2_Meter4, Reg Name- PM5500_1, Register - 0, Value [0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000], err- \u003cnil\u003e "}
+
+{"mqlastsent":"Topic - EMS/EC-48593/Location2_Meter4, Payload- map[Frequency:0 Apparent_Power_Avg:0 Active_Power_Avg:0 Reactive_Power_Avg:0 Avg_PF:0 L2L_Avg_Voltage:0 Avg_Current:0 L2N_Avg_Voltage:0 sts:2019-08-09 19:38:25.454 duid:10007 ets:2019-08-09 19:38:25.658]"}
+{"modlastaquired":"Device- EMS/EC-48593/Location2_Meter4, Reg Name- PM5500_1, Register - 0, Value [0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000], err- \u003cnil\u003e "}
+
+{"mqlastsent":"Topic - EMS/EC-48593/Location2_Meter4, Payload- map[Active_Power_Avg:0 Avg_PF:0 Avg_Current:0 sts:2019-08-09 19:38:28.454 duid:10007 ets:2019-08-09 19:38:28.657 Apparent_Power_Avg:0 Reactive_Power_Avg:0 L2L_Avg_Voltage:0 L2N_Avg_Voltage:0 Frequency:0]"}
+{"modlastaquired":"Device- EMS/EC-48593/Location2_Meter4, Reg Name- PM5500_1, Register - 0, Value [0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000], err- \u003cnil\u003e "}
+{"mqlastsent":"Topic - EMS/EC-48593/Location2_Meter4, Payload- map[duid:10007 ets:2019-08-09 19:38:31.658 Avg_PF:0 L2N_Avg_Voltage:0 Avg_Current:0 sts:2019-08-09 19:38:31.455 Frequency:0 Apparent_Power_Avg:0 Active_Power_Avg:0 Reactive_Power_Avg:0 L2L_Avg_Voltage:0]"}
+
+
+
+{"statuslog":"2019-08-09 19:38:24.6783553 +0530 IST m=+32.384611801\tDevice- EMS/EC-48593/Location1_Meter1, Reg Name- EM6436_1, Register - 3900, Value [], err- serial: timeout "}
+{"modlastaquired":"Device- EMS/EC-48593/Location2_Meter3, Reg Name- PM5500_1, Register - 0, Value [0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000], err- \u003cnil\u003e "}
+{"mqlastsent":"Topic - EMS/EC-48593/Location2_Meter3, Payload- map[Reactive_Power_Avg:0 L2N_Avg_Voltage:0 Avg_Current:0 Frequency:0 Apparent_Power_Avg:0 sts:2019-08-09 19:38:25.452 Avg_PF:0 L2L_Avg_Voltage:0 Active_Power_Avg:0 duid:10006 ets:2019-08-09 19:38:25.554]"}
+{"statuslog":"2019-08-09 19:38:26.7553658 +0530 IST m=+34.461608901\tDevice- EMS/EC-48593/Location1_Meter2, Reg Name- EM6436_1, Register - 3900, Value [], err- serial: timeout "}
+{"modlastaquired":"Device- EMS/EC-48593/Location2_Meter3, Reg Name- PM5500_1, Register - 0, Value [0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000], err- \u003cnil\u003e "}
+{"mqlastsent":"Topic - EMS/EC-48593/Location2_Meter3, Payload- map[L2N_Avg_Voltage:0 sts:2019-08-09 19:38:28.452 ets:2019-08-09 19:38:28.554 Frequency:0 L2L_Avg_Voltage:0 Active_Power_Avg:0 Reactive_Power_Avg:0 Avg_PF:0 duid:10006 Avg_Current:0 Apparent_Power_Avg:0]"}
+{"statuslog":"2019-08-09 19:38:29.8316986 +0530 IST m=+37.537921801\tDevice- EMS/EC-48593/Location1_Meter1, Reg Name- EM6436_1, Register - 3900, Value [], err- serial: timeout "}
+{"modlastaquired":"Device- EMS/EC-48593/Location2_Meter3, Reg Name- PM5500_1, Register - 0, Value [0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000], err- \u003cnil\u003e "}
+{"mqlastsent":"Topic - EMS/EC-48593/Location2_Meter3, Payload- map[duid:10006 Frequency:0 Apparent_Power_Avg:0 Active_Power_Avg:0 Reactive_Power_Avg:0 L2L_Avg_Voltage:0 L2N_Avg_Voltage:0 Avg_PF:0 Avg_Current:0 sts:2019-08-09 19:38:31.452 ets:2019-08-09 19:38:31.554]"}

@@ -1,0 +1,163 @@
+{
+    "msg": {
+        "ToRead": [
+            {
+                "Inter": {
+                    "id": 1,
+                    "name": "Interface 2",
+                    "type": 1,
+                    "ipadd": "",
+                    "port": 0,
+                    "comport": "COM11",
+                    "baudrate": 9600,
+                    "databits": 8,
+                    "parity": "N",
+                    "stopbits": 1,
+                    "timeout": 1,
+                    "daqrate": 1
+                },
+                "Devices": [
+                    {
+                        "Device": {
+                            "id": 1,
+                            "name": "Plant1_EMS1",
+                            "deviceid": "EMS_1002",
+                            "mbid": 5,
+                            "devicemodelsid": 1,
+                            "intefacedetailsid": 1
+                        },
+                        "Modregs": [
+                            {
+                                "id": 1,
+                                "name": "Regs Set 2",
+                                "functcode": 3,
+                                "register": 3800,
+                                "qty": 16,
+                                "datatype": 1,
+                                "byteorder": 1,
+                                "postprocess": "",
+                                "tags": "",
+                                "devicemodelsid": 1
+                            },
+                            {
+                                "id": 2,
+                                "name": "Regs Set 3",
+                                "functcode": 3,
+                                "register": 3700,
+                                "qty": 16,
+                                "datatype": 1,
+                                "byteorder": 1,
+                                "postprocess": "",
+                                "tags": "",
+                                "devicemodelsid": 1
+                            },
+                            {
+                                "id": 3,
+                                "name": "Regs Set 4",
+                                "functcode": 3,
+                                "register": 3600,
+                                "qty": 16,
+                                "datatype": 1,
+                                "byteorder": 1,
+                                "postprocess": "",
+                                "tags": "",
+                                "devicemodelsid": 1
+                            }
+                        ]
+                    },
+                    {
+                        "Device": {
+                            "id": 2,
+                            "name": "Plant1_EMS2",
+                            "deviceid": "EMS_1003",
+                            "mbid": 5,
+                            "devicemodelsid": 2,
+                            "intefacedetailsid": 1
+                        },
+                        "Modregs": []
+                    }
+                ]
+            },
+            {
+                "Inter": {
+                    "id": 2,
+                    "name": "Interface 3",
+                    "type": 1,
+                    "ipadd": "",
+                    "port": 0,
+                    "comport": "COM12",
+                    "baudrate": 9600,
+                    "databits": 8,
+                    "parity": "N",
+                    "stopbits": 1,
+                    "timeout": 1,
+                    "daqrate": 1
+                },
+                "Devices": [
+                    {
+                        "Device": {
+                            "id": 3,
+                            "name": "Plant1_EMS4",
+                            "deviceid": "EMS_1004",
+                            "mbid": 5,
+                            "devicemodelsid": 3,
+                            "intefacedetailsid": 2
+                        },
+                        "Modregs": []
+                    }
+                ]
+            },
+            {
+                "Inter": {
+                    "id": 3,
+                    "name": "Interface 4",
+                    "type": 1,
+                    "ipadd": "",
+                    "port": 0,
+                    "comport": "COM14",
+                    "baudrate": 9600,
+                    "databits": 8,
+                    "parity": "N",
+                    "stopbits": 1,
+                    "timeout": 1,
+                    "daqrate": 1
+                },
+                "Devices": null
+            },
+            {
+                "Inter": {
+                    "id": 4,
+                    "name": "Interface 5",
+                    "type": 1,
+                    "ipadd": "192.168.1.1",
+                    "port": 502,
+                    "comport": "",
+                    "baudrate": 0,
+                    "databits": 0,
+                    "parity": "N",
+                    "stopbits": 0,
+                    "timeout": 0,
+                    "daqrate": 0
+                },
+                "Devices": null
+            },
+            {
+                "Inter": {
+                    "id": 5,
+                    "name": "Interface 6",
+                    "type": 1,
+                    "ipadd": "192.168.1.2",
+                    "port": 502,
+                    "comport": "",
+                    "baudrate": 0,
+                    "databits": 0,
+                    "parity": "N",
+                    "stopbits": 0,
+                    "timeout": 0,
+                    "daqrate": 0
+                },
+                "Devices": null
+            }
+        ]
+    }
+}

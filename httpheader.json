@@ -1,0 +1,35 @@
+res - %v &{
+    
+    GET 
+    /ws 
+    HTTP/1.1 1 1 
+    map[
+        Origin                  :[chrome-extension://pfdhoblngboilpfeibdedpjgfnlcodoo] 
+        Sec-Websocket-Version   :[13] 
+        Accept-Encoding         :[gzip, deflate, br] 
+        Cookie                  :[mysession=MTU2NDk4OTkwMHxEdi1CQkFFQ180SUFBUkFCRUFBQUJQLUNBQUE9fDKRn63T3bIk09Nb1ByF7x02JKooYik6foD6P5tffZMf] 
+        Accept-Language         :[en-US,en;q=0.9] 
+        Sec-Websocket-Key       :[Tee2BBNLxnrJ+OuXzfO4pQ==] 
+        Sec-Websocket-Extensions:[permessage-deflate; client_max_window_bits] 
+        Connection              :[Upgrade] 
+        Pragma                  :[no-cache] 
+        Cache-Control           :[no-cache] 
+        Upgrade                 :[websocket] 
+        User-Agent              :[Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36]
+        ] 
+        {} 
+        <nil> 
+        0 
+        [] 
+        false 
+        localhost:5000 
+        map[] 
+        map[] 
+        <nil> 
+        map[] 
+        [::1]:50375 
+        /ws 
+        <nil> 
+        <nil> 
+        <nil> 
+        0xc00027b240
