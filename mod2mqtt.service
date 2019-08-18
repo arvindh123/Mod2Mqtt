@@ -6,7 +6,7 @@ After=network.target
 
 WorkingDirectory=/home/pi/Mod2Mqtt
 ExecStartPre=-sudo date -s "$(curl http://10.87.1.54/Mobility/TimerService.asmx/GetCurrentTime)" 
-ExecStart= /home/pi/Mod2Mqtt/Mod2Mqtt > /home/pi/Mod2Mqtt/main.run
+ExecStart= /home/pi/Mod2Mqtt/Mod2Mqtt 
 StandardOutput=file:/home/pi/Mod2Mqtt/Mod2Mqtt.log
 StandardError=append:/home/pi/Mod2Mqtt/Mod2Mqtt.err
 Restart=on-failure
