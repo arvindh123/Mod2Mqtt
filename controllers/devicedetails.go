@@ -40,9 +40,7 @@ func CreateDeviceDetails(c *gin.Context) {
 func GetAllDeviceDetails(c *gin.Context) {
 	var dev []models.DeviceDetails
 	var obj []models.DeviceAllDetails
-	var model models.DeviceModels
-	var modregs models.ModbusRegisters
-	var inter models.InterfaceDetails
+
 	db := models.GetDB()
 	// id := c.Params.ByName("id")
 	if err := db.Find(&dev).Error; err != nil {
@@ -50,8 +48,9 @@ func GetAllDeviceDetails(c *gin.Context) {
 	} else {
 		if len(dev) > 0 {
 			for i := range dev {
+				var model models.DeviceModels
+				var inter models.InterfaceDetails
 				db.Where("id = ?", dev[i].DeviceModelsID).First(&model)
-				db.Where("device_models_id = ?", dev[i].DeviceModelsID).Find(&modregs)
 				db.Where("id = ?", dev[i].InterfaceDetailsID).First(&inter)
 				obj = append(obj, models.DeviceAllDetails{Device: dev[i], Model: model, Interface: inter})
 			}
