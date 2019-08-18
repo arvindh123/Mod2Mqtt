@@ -83,8 +83,8 @@ func MqttPublish2(Device models.DeviceDetails, Payload chan map[string]interface
 			// fmt.Println("Pusblished data %v", finalPay)
 
 			if err == nil {
-				mqClient.Publish(Device.Name, 0, false, final)
-				go ws.WsClientPub(ws.MqLastSent{fmt.Sprintf("Topic - %s, Payload- %v", Device.Name, finalPay)})
+				mqClient.Publish(Device.PubTopic, 0, false, final)
+				go ws.WsClientPub(ws.MqLastSent{fmt.Sprintf("Topic - %s, Payload- %v", Device.PubTopic, finalPay)})
 			} else {
 				go ws.WsClientPub(ws.MqLastSent{fmt.Sprintf("Topic - %s, Before Marshal Payload- %v, Error in Marshal -> Err- %v", Device.Name, finalPay, err)})
 			}

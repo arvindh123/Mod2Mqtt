@@ -10,18 +10,19 @@ func CreateAddFeatures(c *gin.Context) {
 	var obj models.AddonFeatures
 	id := c.Params.ByName("id")
 	if id == "0" {
-		if err := c.ShouldBindJSON(&obj); err != nil {
-			c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: err.Error()}}})
-			c.Abort()
-		} else {
+		// if err := c.ShouldBindJSON(&obj); err != nil {
+		// 	c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: err.Error()}}})
+		// 	c.Abort()
+		// } else {
 
-			if err := db.Create(&obj).Error; err != nil {
-				c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: err.Error()}}})
-				c.Abort()
-			} else {
-				c.JSON(200, gin.H{"msg": []models.Content{models.Content{"Done"}}})
-			}
-		}
+		// 	if err := db.Create(&obj).Error; err != nil {
+		// 		c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: err.Error()}}})
+		// 		c.Abort()
+		// 	} else {
+		// 		c.JSON(200, gin.H{"msg": []models.Content{models.Content{"Done"}}})
+		// 	}
+		// }
+		c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: "Can't Create , Its is disabled"}}})
 	} else {
 		if err := db.Where("id = ?", id).First(&obj).Error; err != nil {
 			c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: err.Error()}}})
@@ -61,13 +62,13 @@ func GetAllAddFeatures(c *gin.Context) {
 }
 
 func DeleteAddFeatures(c *gin.Context) {
-	db := models.GetDB()
-	id := c.Params.ByName("id")
-	var obj models.AddonFeatures
-	if err := db.Where("id = ?", id).Delete(&obj).Error; err != nil {
-		c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: err.Error()}}})
-	} else {
-		c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: "Done"}}})
-	}
-
+	// db := models.GetDB()
+	// id := c.Params.ByName("id")
+	// var obj models.AddonFeatures
+	// if err := db.Where("id = ?", id).Delete(&obj).Error; err != nil {
+	// 	c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: err.Error()}}})
+	// } else {
+	// 	c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: "Done"}}})
+	// }
+	c.JSON(200, gin.H{"msg": []models.Content{models.Content{Content: "Can't delete , Its is disabled"}}})
 }

@@ -9,6 +9,7 @@ type DeviceDetails struct {
 	Name               string `gorm:"NOT NULL" json:"name"`
 	DeviceId           string `gorm:"UNIQUE;NOT NULL" json:"deviceid"`
 	MbId               byte   `gorm:"NOT NULL" json:"mbid"`
+	PubTopic           string `gorm:"-"`
 	DeviceModelsID     int    `gorm:"NOT NULL" json:"devicemodelsid" sql:"type:int REFERENCES device_models(id) ON DELETE RESTRICT"`
 	InterfaceDetailsID int    `gorm:"NOT NULL" json:"intefacedetailsid" sql:"type:int REFERENCES interface_details(id) ON DELETE RESTRICT"`
 }

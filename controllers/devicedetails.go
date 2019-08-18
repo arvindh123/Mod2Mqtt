@@ -48,13 +48,18 @@ func GetAllDeviceDetails(c *gin.Context) {
 	if err := db.Find(&dev).Error; err != nil {
 		c.JSON(200, gin.H{"msg": []models.Content{models.Content{err.Error()}}})
 	} else {
-		for i := range dev {
-			db.Where("id = ?", dev[i].DeviceModelsID).First(&model)
-			db.Where("device_models_id = ?", dev[i].DeviceModelsID).Find(&modregs)
-			db.Where("id = ?", dev[i].InterfaceDetailsID).First(&inter)
-			obj = append(obj, models.DeviceAllDetails{Device: dev[i], Model: model, Interface: inter})
+		if len(dev) > 0 {
+			for i := range dev {
+				db.Where("id = ?", dev[i].DeviceModelsID).First(&model)
+				db.Where("device_models_id = ?", dev[i].DeviceModelsID).Find(&modregs)
+				db.Where("id = ?", dev[i].InterfaceDetailsID).First(&inter)
+				obj = append(obj, models.DeviceAllDetails{Device: dev[i], Model: model, Interface: inter})
+			}
+			c.JSON(200, gin.H{"msg": obj})
+		} else {
+			c.JSON(200, gin.H{"msg": dev})
 		}
-		c.JSON(200, gin.H{"msg": obj})
+
 	}
 }
 

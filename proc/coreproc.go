@@ -44,13 +44,15 @@ func ManInit() {
 
 func TryToStart(StartChan chan bool, StopChan chan bool) {
 	for {
+
 		select {
 		case <-time.After(time.Duration(auotStartTime) * time.Millisecond):
-			if !modStatus && !mqStatus && autoStartMem {
+			if !(modStatus && mqStatus) && autoStartMem {
 				StartProc()
 			}
 		case cmd := <-StartChan:
 			if cmd {
+				ManInit()
 				StartProc()
 			}
 		case cmd := <-StopChan:
@@ -65,7 +67,6 @@ func StartProc() {
 	processMu.Lock()
 	defer processMu.Unlock()
 	var wg sync.WaitGroup
-	ManInit()
 	if modStatus == false {
 		wg.Add(1)
 		go StartMod(AddFeatures, &wg)
@@ -111,6 +112,7 @@ func StartMq(AddFeatures map[string]interface{}, wg *sync.WaitGroup) {
 			} else {
 				Cid := "mod2mqtt_" + genrand.RandStringRunes(5) + "_"
 				mqStatus, mqErr = mq.MqConnect(Cid, mqParams)
+				fmt.Println("mqStatus recevied - ", mqStatus)
 			}
 		} else {
 			go ws.WsStatusPub(fmt.Sprintf("%v	Error Fetching Mqtt Details ", time.Now(), err.Error()))
@@ -139,15 +141,19 @@ func StartMod(AddFeatures map[string]interface{}, wg *sync.WaitGroup) {
 				}
 			}
 		}
-		if len(addToTopic) > 0 {
-			for i := range Inters.AllStructParams {
-				for j := range Inters.AllStructParams[i].Devices {
-					Inters.AllStructParams[i].Devices[j].Device.Name = addToTopic + Inters.AllStructParams[i].Devices[j].Device.Name
+
+		for i := range Inters.AllStructParams {
+			for j := range Inters.AllStructParams[i].Devices {
+				if len(addToTopic) > 0 {
+					Inters.AllStructParams[i].Devices[j].Device.PubTopic = addToTopic + Inters.AllStructParams[i].Devices[j].Device.DeviceId
+				} else {
+					Inters.AllStructParams[i].Devices[j].Device.PubTopic = Inters.AllStructParams[i].Devices[j].Device.DeviceId
 				}
 			}
 		}
 		ctx, cancel = context.WithCancel(context.Background())
 		modStatus = mod.ModProcStart(Inters, ctx, AddFeatures)
+
 	} else {
 		go ws.WsStatusPub(fmt.Sprintf("%v	Modbus Process is already running", time.Now()))
 	}

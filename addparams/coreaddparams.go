@@ -43,9 +43,10 @@ func InitParams() {
 }
 
 func GetParams() map[string]interface{} {
-	if FirstInit == false {
-		InitParams()
-		FirstInit = true
-	}
+	// if FirstInit == false {
+	// 	InitParams()
+	// 	FirstInit = true
+	// }
+	InitParams()
 	return AddFeatures
 }

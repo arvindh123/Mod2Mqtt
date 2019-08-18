@@ -22,6 +22,8 @@ class AuthExample extends React.Component {
           <PrivateRoute path="/mqtt" component={Mqtt} />
           <PrivateRoute path="/devmodels" component={DeviceModels} />
           <PrivateRoute path="/devices" component={Devices} />
+          <PrivateRoute path="/AdditionalFeatures" component={AdditionalFeatures} />
+         
         </div>
       </Router>
     );
@@ -178,6 +180,12 @@ class NavLoggedIn extends React.Component {
 
           <ul class="nav navbar-nav">
           <li>
+              <Link to="/devices">Devices</Link>
+            </li>
+            <li>
+              <Link to="/devmodels">Device Models</Link>
+            </li>
+          <li>
               <Link to="/interface">Interface</Link>
             </li>
             <li>
@@ -187,13 +195,12 @@ class NavLoggedIn extends React.Component {
             <li>
               <Link to="/mqtt">Mqtt</Link>
             </li>
+            <li>
+              <Link to="/AdditionalFeatures">Additional Features</Link>
+            </li>
 
-            <li>
-              <Link to="/devmodels">Device Models</Link>
-            </li>
-            <li>
-              <Link to="/devices">Devices</Link>
-            </li>
+            
+            
           </ul>
 
           <ul class="nav navbar-nav  navbar-right">
@@ -250,20 +257,23 @@ class NavLogIn extends React.Component {
 
           <ul class="nav navbar-nav">
           <li>
-              <Link to="/interface">Interface</Link>
-            </li>
-            <li>
-              <Link to="/modregs">Modbus Registers</Link>
-            </li>
-          
-            <li>
-              <Link to="/mqtt">Mqtt</Link>
+              <Link to="/devices">Devices</Link>
             </li>
             <li>
               <Link to="/devmodels">Device Models</Link>
             </li>
+          <li>
+              <Link to="/interface">Interface</Link>
+            </li>
             <li>
-              <Link to="/devices">Devices</Link>
+              <Link to="/modregs">Modbus Regsiters</Link>
+            </li>
+            
+            <li>
+              <Link to="/mqtt">Mqtt</Link>
+            </li>
+            <li>
+              <Link to="/AdditionalFeatures">Additional Features</Link>
             </li>
           </ul>
 
@@ -523,7 +533,7 @@ class Interface extends React.Component {
     this.getmodparams();
   };
   handleRemoveSerial  = (i) => {
-    PostGet.Get("api/v1/interface/create/"+i, "DELETE")
+    PostGet.Get("api/v1/interface/delete/"+i, "DELETE")
     .then(response  => response.json())
     .then(json => {
                    if (json.msg[0].content === "Done") {
@@ -697,7 +707,7 @@ class ModbusRegsiters extends React.Component {
   
   
   handleAddReg(){
-    let bod = { name : this.state.name , unit : parseInt(this.state.unit), functcode : parseInt(this.state.functcode), register : parseInt(this.state.register), qty:parseInt(this.state.qty), datatype:parseInt(this.state.datatype),byteorder:parseInt(this.state.byteorder), postprocess:this.state.postprocess, tags:this.state.tags,}
+    let bod = { name : this.state.name ,  functcode : parseInt(this.state.functcode), register : parseInt(this.state.register), qty:parseInt(this.state.qty), datatype:parseInt(this.state.datatype),byteorder:parseInt(this.state.byteorder), postprocess:this.state.postprocess, tags:this.state.tags, devicemodelsid:parseInt(this.state.devicemodelsid),}
     PostGet.Post("api/v1/modregs/create/0", "POST",bod)
            .then(response  => response.json())
            .then(json => {
@@ -821,9 +831,7 @@ class ModbusRegsiters extends React.Component {
         <label>Name &nbsp;</label><input class="form-control" type="text" name="name"  onChange= { this.commonChange }/> &nbsp;
         </div>
 
-        <div class="col-xs-1 panel">
-        <label>Unit &nbsp;</label><input class="form-control" type="number" name="unit"  onChange= { this.commonChange }/> &nbsp;  
-        </div>
+        
 
         <div class="col-xs-2 panel">
         <label>Function Code &nbsp;</label>
@@ -1041,7 +1049,7 @@ class DeviceModels extends React.Component {
   getdevicemodels(){
     PostGet.Get("api/v1/devicemodels/getall", "GET")
            .then(response  => response.json())
-           .then(json => {this.setState({ data:json.msg})});
+           .then(json => { this.setState({ data:json.msg})});
   }
 
   componentDidMount() {
@@ -1051,7 +1059,7 @@ class DeviceModels extends React.Component {
   
   
   handleAddDevModel = (i) => {
-    let bod = { name : this.state.name , unit : parseInt(this.state.unit), functcode : parseInt(this.state.functcode), register : parseInt(this.state.register), qty:parseInt(this.state.qty), datatype:parseInt(this.state.datatype),byteorder:parseInt(this.state.byteorder), postprocess:this.state.postprocess, tags:this.state.tags,}
+    let bod = { make : this.state.make , model : this.state.model,}
     PostGet.Post("api/v1/devicemodels/create/0", "POST",bod)
            .then(response  => response.json())
            .then(json => {
@@ -1076,11 +1084,11 @@ class DeviceModels extends React.Component {
           if (json.msg[0].content === "Done") {
             // console.log(json.msg)
             // alert("user")
-            this.getmodregs(); 
+            this.getdevicemodels(); 
           } else {
             alert(json.msg[0].content)
             // console.log(json.msg)
-            this.getmodregs(); 
+            this.getdevicemodels(); 
           }
           });
 }
@@ -1220,9 +1228,9 @@ class Devices extends React.Component {
       data: [],
       name : '',
       deviceid:'',
-      mbid:'',
-      devicemodelid : '',
-      interfaceid:'',
+      mbid:0,
+      devicemodelsid : 0,
+      intefacedetailsid: 0,
     };
     this.commonChange = this.commonChange.bind(this)
     this.getdevices = this.getdevices.bind(this)
@@ -1261,7 +1269,8 @@ class Devices extends React.Component {
   
   
   handleAddDevices = (i) => {
-    let bod = { name : this.state.name , deviceid : this.state.deviceid, mbid : parseInt(this.state.mbid), devicemodelid : parseInt(this.state.devicemodelid), interfaceid:parseInt(this.state.interfaceid)}
+    let bod = { name : this.state.name , deviceid : this.state.deviceid, mbid : parseInt(this.state.mbid), devicemodelsid : parseInt(this.state.devicemodelsid), intefacedetailsid:parseInt(this.state.intefacedetailsid)}
+    // console.log(bod)
     PostGet.Post("api/v1/devices/create/0", "POST",bod)
            .then(response  => response.json())
            .then(json => {
@@ -1286,11 +1295,11 @@ class Devices extends React.Component {
           if (json.msg[0].content === "Done") {
             // console.log(json.msg)
             // alert("user")
-            this.getmodregs(); 
+            this.getdevices(); 
           } else {
             alert(json.msg[0].content)
             // console.log(json.msg)
-            this.getmodregs(); 
+            this.getdevices(); 
           }
           });
 }
@@ -1312,49 +1321,179 @@ class Devices extends React.Component {
         </div>
 
         <div class="col-xs-1 panel">
-        <label>Device Model ID &nbsp;</label><input class="form-control" type="number" name="devicemodelid"  onChange= { this.commonChange }/> &nbsp;  
+        <label>Device Model ID &nbsp;</label><input class="form-control" type="number" name="devicemodelsid"  onChange= { this.commonChange }/> &nbsp;  
         </div>
-
-       
 
         <div class="col-xs-1 panel">
-        <label>Interface ID &nbsp;</label><input class="form-control" type="number" name="interfaceid"  onChange= { this.commonChange }/> &nbsp;  
+        <label>Interface ID &nbsp;</label><input class="form-control" type="number" name="intefacedetailsid"  onChange= { this.commonChange }/> &nbsp;  
         </div>
-
 
         <div class="col-xs-1 panel">
           <button onClick={this.handleAddDevices} className="btn btn-primary float-right" >
               Add Register
           </button>
         </div>
+    
+        <table class="table" >
+          <tr> 
+            <th>ID </th> <th>Name</th>  <th>Device ID</th>
+            <th>Modbus ID</th>  <th>Make</th><th>Model</th>
+            <th>Interface </th><th>Type</th>
+            <th> Remove </th>
+          </tr>
+          <tbody>{this.state.data.map((item, i) => (        
+            <tr key={i}> 
+            <td >{item.Device.id}</td> <td >{item.Device.name}</td>
+            <td >{item.Device.deviceid}</td><td >{item.Device.mbid}</td>
+            <td >{item.Model.make}</td> <td >{item.Model.model}</td> 
+            <td >{item.Interface.name}</td>
+            <td >{this.getType(item.Interface.type)}</td>
+            <td>
+            <button className="btn btn-danger btn-sm" onClick={this.handleRemoveDevices.bind(this, item.Device.id)} >
+                Remove
+            </button>
+            </td>
+            </tr>        
+            )) 
+            } 
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+}
 
-        
+class AdditionalFeatures extends React.Component{
+  constructor(props) {
+    super(props);
+    this.state = {
+      data: [],
+      param : '',
+      value:'',
+      paramtype:0,
+    };
+    this.commonChangeArray = this.commonChangeArray.bind(this)
+    this.getaddfeatures = this.getaddfeatures.bind(this)
+  }
+
+  commonChangeArray(event) {
+    // console.log( [event.target.id],[event.target.name], event.target.value  ) 
+    let newArray = [...this.state.data];
+    newArray[event.target.id][event.target.name] = event.target.value
+    this.setState({ data : newArray});
+  }
+
+  componentDidMount() {
+    this.getaddfeatures();
+  };
+  getaddfeatures(){
+    PostGet.Get("api/v1/addfeatures/getall", "GET")
+           .then(response  => response.json())
+           .then(json => {console.log(json.msg); this.setState({ data:json.msg})});
+  }
+
+  handleUpdateAddFeatures = (i) => {
+    let bod = this.state.data[i-1] 
+    // console.log(bod)
+    PostGet.Post("api/v1/addfeatures/create/"+i, "POST",bod)
+           .then(response  => response.json())
+           .then(json => {
+                          if (json.msg[0].content === "Done") {
+                            // console.log(json.msg)
+                            // alert("user")
+                            this.getaddfeatures();
+                          } else {
+                            alert(json.msg[0].content)
+                            // console.log(json.msg)
+                            this.getaddfeatures();
+                          }
+                          });
+    
+  }
+  handleAddAddFeatures = (i) => {
+    let bod = { param : this.state.param , value : this.state.value, paramtype : parseInt(this.state.paramtype), }
+    // console.log(bod)
+    PostGet.Post("api/v1/addfeatures/create/0", "POST",bod)
+           .then(response  => response.json())
+           .then(json => {
+                          if (json.msg[0].content === "Done") {
+                            // console.log(json.msg)
+                            // alert("user")
+                            this.getaddfeatures();
+                          } else {
+                            alert(json.msg[0].content)
+                            // console.log(json.msg)
+                            this.getaddfeatures();
+                          }
+                          });
+  }
+
+  handleDelAddFeatures = (i) => {
+    PostGet.Get("api/v1/addfeatures/delete/"+i, "DELETE")
+      .then(response  => response.json())
+      .then(json => {
+          if (json.msg[0].content === "Done") {
+            // console.log(json.msg)
+            // alert("user")
+            this.getaddfeatures(); 
+          } else {
+            alert(json.msg[0].content)
+            // console.log(json.msg)
+            this.getaddfeatures(); 
+          }
+          });
+  }
+
+  render() { 
+    return (
+      <div>
+        {/* <div class="col-xs-2 panel">
+        <label>Parameter Name &nbsp;</label><input class="form-control" type="text" name="param"  onChange= { this.commonChange }/> &nbsp;
+        </div>
+
+        <div class="col-xs-2 panel">
+        <label>Value  &nbsp;</label><input class="form-control" type="text" name="value"  onChange= { this.commonChange }/> &nbsp;
+        </div>
+
+        <div class="col-xs-2 panel">
+        <label>Parameter type :  1 - Bool ,  2 - UInt64, 3 - Int64, 4 - Float64 &nbsp;</label><input class="form-control" type="number" name="paramtype"  onChange= { this.commonChange }/> &nbsp;
+        </div>
 
 
-      <table class="table" >
-        <tr> 
-          <th>ID </th> <th>Name</th>  <th>Device ID</th>
-          <th>Modbus ID</th>  <th>Makw</th><th>Model</th>
-          <th>Interface </th><th>Type</th>
-          <th> Remove </th>
-        </tr>
-        <tbody>{this.state.data.map((item, i) => (        
-          <tr key={i}> 
-          <td >{item.Device.id}</td> <td >{item.Device.name}</td>
-          <td >{item.Device.deviceid}</td><td >{item.Device.mbid}</td>
-          <td >{item.Model.make}</td> <td >{item.Model.model}</td> 
-          <td >{item.Interface.name}</td>
-          <td >{this.getType(item.Interface.type)}</td>
-          <td>
-          <button className="btn btn-danger btn-sm" onClick={this.handleRemoveDevices.bind(this, item.Device.id)} >
-              Remove
+       
+        <div class="col-xs-1 panel">
+          <button onClick={this.handleAddDevices} className="btn btn-primary float-right" >
+              Add Features
           </button>
-          </td>
-          </tr>        
-          )) 
-          } 
-        </tbody>
-      </table>
+        </div> */}
+        <label>Parameter type : 0 - string  1 - Bool ,  2 - UInt64, 3 - Int64, 4 - Float64 &nbsp;</label>
+        <table class="table" >
+          <tr> 
+            <th>ID </th> <th>Parameter name</th>  <th>Value</th>
+            <th>Parameter Type </th>  
+            <th></th><th></th><th></th>
+          </tr>
+          <tbody>{this.state.data.map((item, i) => (        
+            <tr key={i}> 
+            <td >{item.id}</td> <td >{item.param}</td>
+            <td>
+              <input  id={i} type="text" name="value" value = {item.value} onChange= { this.commonChangeArray } readOnly = {this.state.readonly}  onClick= { () => { this.setState({readonly : false})} }/>
+            </td>
+            <td>
+              <input  id={i} type="text" name="paramtype" value = {item.paramtype} onChange= { this.commonChangeArray } readOnly = {this.state.readonly}  onClick= { () => { this.setState({readonly : false})} }/>
+            </td>
+            <td >{item.value}</td><td >{item.paramtype}</td>
+            
+            <td>
+            <button className="btn btn-success btn-sm" onClick={this.handleUpdateAddFeatures.bind(this, item.id)} >
+                Update
+            </button>
+            </td>
+            </tr>        
+            )) 
+            } 
+          </tbody>
+        </table>
       </div>
     );
   }

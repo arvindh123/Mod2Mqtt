@@ -39,6 +39,7 @@ func ModProcStart(Inters models.AllStructParams, ctx context.Context, addFeature
 				}
 				// handler.Logger = log.New(os.Stdout, "test: ", log.LstdFlags)
 				err := handler.Connect()
+
 				if err == nil {
 					var Rtu RtuContainer
 					Rtu.RTUClientHandler, Rtu.RTUClient = handler, modbus.NewClient(handler)
@@ -169,7 +170,6 @@ func (r *RtuContainer) ModOperation(Device models.DeviceWithRegs) {
 	go mq.MqttPublish2(Device.Device, Payload, &MqWg) // change to go mq.MqttPublish2(Device.Device, Payload)" once archive to DB is done in MQTT side
 	r.RTUClientHandler.SlaveId = Device.Device.MbId
 
-	
 	results := []byte{}
 	err := errors.New("")
 	if val, ok := AddFeatures["sts"]; ok {
@@ -203,7 +203,6 @@ func (r *RtuContainer) ModOperation(Device models.DeviceWithRegs) {
 	ModWg.Wait()
 	if err == nil {
 
-		
 		Payload <- tpay
 	}
 

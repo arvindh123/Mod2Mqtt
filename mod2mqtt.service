@@ -4,11 +4,11 @@ After=network.target
 
 [Service]
 
-WorkingDirectory=/home/pi/MultiRtuTcp
+WorkingDirectory=/home/pi/Mod2Mqtt
 ExecStartPre=-sudo date -s "$(curl http://10.87.1.54/Mobility/TimerService.asmx/GetCurrentTime)" 
-ExecStart= /home/pi/MultiRtuTcp/main > /home/pi/MultiRtuTcp/main.run
-StandardOutput=file:/home/pi/MultiRtuTcp/main.log
-StandardError=append:/home/pi/MultiRtuTcp/main.err
+ExecStart= /home/pi/Mod2Mqtt/Mod2Mqtt > /home/pi/Mod2Mqtt/main.run
+StandardOutput=file:/home/pi/Mod2Mqtt/Mod2Mqtt.log
+StandardError=append:/home/pi/Mod2Mqtt/Mod2Mqtt.err
 Restart=on-failure
 User=pi
 
