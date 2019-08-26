@@ -145,9 +145,9 @@ func StartMod(AddFeatures map[string]interface{}, wg *sync.WaitGroup) {
 		for i := range Inters.AllStructParams {
 			for j := range Inters.AllStructParams[i].Devices {
 				if len(addToTopic) > 0 {
-					Inters.AllStructParams[i].Devices[j].Device.PubTopic = addToTopic + Inters.AllStructParams[i].Devices[j].Device.DeviceId
+					Inters.AllStructParams[i].Devices[j].Device.PubTopic = addToTopic + Inters.AllStructParams[i].Devices[j].Device.DeviceId + "/" + Inters.AllStructParams[i].Devices[j].Device.PubTopic
 				} else {
-					Inters.AllStructParams[i].Devices[j].Device.PubTopic = Inters.AllStructParams[i].Devices[j].Device.DeviceId
+					Inters.AllStructParams[i].Devices[j].Device.PubTopic = Inters.AllStructParams[i].Devices[j].Device.DeviceId + "/" + Inters.AllStructParams[i].Devices[j].Device.PubTopic
 				}
 			}
 		}

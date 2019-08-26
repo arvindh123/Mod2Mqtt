@@ -1229,6 +1229,7 @@ class Devices extends React.Component {
       name : '',
       deviceid:'',
       mbid:0,
+      pubtopic:'',
       devicemodelsid : 0,
       intefacedetailsid: 0,
     };
@@ -1269,7 +1270,7 @@ class Devices extends React.Component {
   
   
   handleAddDevices = (i) => {
-    let bod = { name : this.state.name , deviceid : this.state.deviceid, mbid : parseInt(this.state.mbid), devicemodelsid : parseInt(this.state.devicemodelsid), intefacedetailsid:parseInt(this.state.intefacedetailsid)}
+    let bod = { name : this.state.name , deviceid : this.state.deviceid, mbid : parseInt(this.state.mbid), pubtopic :this.state.pubtopic, devicemodelsid : parseInt(this.state.devicemodelsid), intefacedetailsid:parseInt(this.state.intefacedetailsid)}
     // console.log(bod)
     PostGet.Post("api/v1/devices/create/0", "POST",bod)
            .then(response  => response.json())
@@ -1320,6 +1321,10 @@ class Devices extends React.Component {
         <label>Modbus ID &nbsp;</label><input class="form-control" type="number" name="mbid"  onChange= { this.commonChange }/> &nbsp;
         </div>
 
+        <div class="col-xs-2 panel">
+        <label>Topic Type&nbsp;</label><input class="form-control" type="text" name="pubtopic"  onChange= { this.commonChange }/> &nbsp;
+        </div>
+
         <div class="col-xs-1 panel">
         <label>Device Model ID &nbsp;</label><input class="form-control" type="number" name="devicemodelsid"  onChange= { this.commonChange }/> &nbsp;  
         </div>
@@ -1337,14 +1342,14 @@ class Devices extends React.Component {
         <table class="table" >
           <tr> 
             <th>ID </th> <th>Name</th>  <th>Device ID</th>
-            <th>Modbus ID</th>  <th>Make</th><th>Model</th>
+            <th>Modbus ID</th>  <th>Topic Type</th>  <th>Make</th><th>Model</th>
             <th>Interface </th><th>Type</th>
             <th> Remove </th>
           </tr>
           <tbody>{this.state.data.map((item, i) => (        
             <tr key={i}> 
             <td >{item.Device.id}</td> <td >{item.Device.name}</td>
-            <td >{item.Device.deviceid}</td><td >{item.Device.mbid}</td>
+            <td >{item.Device.deviceid}</td><td >{item.Device.mbid}</td><td >{item.Device.pubtopic}</td> 
             <td >{item.Model.make}</td> <td >{item.Model.model}</td> 
             <td >{item.Interface.name}</td>
             <td >{this.getType(item.Interface.type)}</td>
